@@ -1,0 +1,12 @@
+prometheus_client==0.18.0
+python-dotenv==1.0.1
+redis==5.0.3
+psycopg2-binary==2.9.9
+psycopg[binary]==3.2.6
+aiogram[fast]==3.4.1
+loguru==0.7.2
+redis==5.0.3
+sqlalchemy==2.0.28
+alembic==1.13.1
+asyncpg
+cryptography
