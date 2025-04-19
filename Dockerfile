@@ -12,4 +12,4 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-CMD ["python", "src/bot/main.py"]
+CMD ["python", "src/main.py"]

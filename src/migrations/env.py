@@ -5,8 +5,8 @@ from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine.url import URL
 from alembic import context
 from dotenv import load_dotenv
-from src.bot.models import Base
-from src.bot.clients.postgres import PostgresClient
+from src.core.models import Base
+from src.core.clients.databases.postgres import PostgresClient
 
 load_dotenv()
 
@@ -16,7 +16,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-config.set_main_option("sqlalchemy.url", PostgresClient.dsn)
+config.set_main_option("sqlalchemy.url", PostgresClient.dsn.replace("+asyncpg", ""))
 
 
 def run_migrations_offline():

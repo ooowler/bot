@@ -1,6 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 import os
 from sqlalchemy import text
+from loguru import logger
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class PostgresClient:
@@ -21,7 +26,7 @@ class PostgresClient:
         async with self.session_maker() as session:
             result = await session.execute(text("SELECT 1"))
             value = result.scalar_one()
-            print(f"✅ Проверка подключения: {value}")
+            logger.info(f"✅ Проверка подключения: {value}")
             return value
 
 
