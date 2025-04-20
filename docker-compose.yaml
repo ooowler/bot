@@ -6,3 +6,13 @@ services:
       - .env
     ports:
       - "8000:8000"
+
+  pool_worker:
+    build:
+      context: .
+    env_file:
+      - .env
+    command: python -u -m src.pool_runner
+
+    depends_on:
+      - telegram_bot

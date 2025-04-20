@@ -28,9 +28,23 @@ def get_exchanges_actions_keyboard():
             ],
             [
                 InlineKeyboardButton(
+                    text="Удалить аккаунт", callback_data=Callbacks.Accounts.DELETE
+                ),
+                InlineKeyboardButton(
                     text="Выполнить ордер",
                     callback_data=Callbacks.Accounts.EXECUTE_ORDER,
                 ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="➕ Добавить прокси", callback_data=Callbacks.Proxy.ADD
+                ),
+                InlineKeyboardButton(
+                    text="📋 Список прокси", callback_data=Callbacks.Proxy.INFO
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="Пулы", callback_data=Callbacks.Pools.INFO),
             ],
         ]
     )

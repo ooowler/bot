@@ -10,3 +10,5 @@ sqlalchemy==2.0.28
 alembic==1.13.1
 asyncpg
 cryptography
+faker
+aiohttp-socks

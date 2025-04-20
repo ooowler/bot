@@ -12,6 +12,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.orm import relationship, backref
+
 
 Base = declarative_base()
 
@@ -105,3 +108,33 @@ class UserAccountLink(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "account_id", name="uq_user_account"),
     )
+
+
+class Proxy(Base):
+    __tablename__ = "proxies"
+
+    id = Column(Integer, primary_key=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"))
+    ip = Column(String, nullable=False)
+    port = Column(Integer, nullable=False)
+    login = Column(String, nullable=False)
+    password = Column(String, nullable=False)
+    country = Column(String, nullable=False)
+
+    in_use = Column(Boolean, default=False, nullable=False)
+    fails = Column(Integer, default=0, nullable=False)
+
+    account = relationship("Account", backref="proxy", uselist=False)
+
+
+class FakeHeader(Base):
+    __tablename__ = "fake_headers"
+
+    id = Column(Integer, primary_key=True)
+    account_id = Column(
+        Integer, ForeignKey("accounts.id", ondelete="CASCADE"), unique=True
+    )
+    headers = Column(JSON, nullable=False)
+    cookies = Column(JSON, nullable=False)
+
+    account = relationship("Account", backref="fake_header", uselist=False)

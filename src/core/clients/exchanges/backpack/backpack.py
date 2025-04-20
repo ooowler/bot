@@ -11,6 +11,11 @@ from src.core.clients.exchanges.backpack.schemas.balance import (
     TokenBalance,
 )
 
+from aiohttp_socks import ProxyConnector
+from aiohttp import ClientTimeout, ClientSession
+from aiohttp.client_exceptions import ServerDisconnectedError, ClientConnectorError
+from loguru import logger
+
 
 class BackpackExchangeClient:
     def __init__(
@@ -70,32 +75,45 @@ class BackpackExchangeClient:
             "Content-Type": "application/json; charset=utf-8",
             **self.fake_headers,
         }
-
+        url = f"{self.base_url}{endpoint}"
         data = json.dumps(params) if method.upper() in ("POST", "PATCH") else None
 
-        async with aiohttp.ClientSession() as session:
-            async with session.request(
-                method=method.upper(),
-                url=f"{self.base_url}{endpoint}",
-                headers=headers,
-                params=None if method.upper() in ("POST", "PATCH") else params,
-                data=data,
-                proxy=self.proxy_url,
-                cookies=self.cookies,
-            ) as resp:
-                if need_response:
+        # ProxyConnector для SOCKS5
+        connector = ProxyConnector.from_url(self.proxy_url) if self.proxy_url else None
+
+        timeout = ClientTimeout(total=30)
+
+        try:
+            logger.debug(
+                "Sending request {} {} with proxy: {}", method, url, self.proxy_url
+            )
+            async with ClientSession(connector=connector, timeout=timeout) as session:
+                async with session.request(
+                    method=method.upper(),
+                    url=url,
+                    headers=headers,
+                    params=None if data else params,
+                    data=data,
+                    cookies=self.cookies,
+                ) as resp:
                     text = await resp.text()
+                    if not need_response:
+                        return None
                     try:
                         return json.loads(text)
                     except json.JSONDecodeError:
-                        print(f"Failed to parse JSON response from {endpoint}")
-                        print(f"Status: {resp.status}")
-                        print(f"Raw response:\n{text}")
-                        return {
-                            "error": "invalid_json",
-                            "status": resp.status,
-                            "raw": text,
-                        }
+                        logger.error("JSON decode error from {}: {}", url, text)
+                        return {"error": "invalid_json", "raw": text}
+        except (ServerDisconnectedError, ClientConnectorError) as e:
+            logger.error(
+                "Request failed to {} with proxy {}: {}", url, self.proxy_url, str(e)
+            )
+            return {"error": "proxy_failure", "message": str(e)}
+        except Exception as e:
+            logger.exception(
+                "Unhandled exception while sending request to {}: {}", url, str(e)
+            )
+            return {"error": "unexpected", "message": str(e)}
 
     async def send_public_request(
         self,

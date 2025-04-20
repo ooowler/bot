@@ -12,14 +12,22 @@ class AccountsCallbacks(StrEnum):
     SHOW_ONE = "accounts_show_one"
     GET_BALANCE = "accounts_get_balance"
     EXECUTE_ORDER = "accounts_execute_order"
+    DELETE = "accounts_delete"
 
 
 class ProxyCallbacks(StrEnum):
     INFO = "proxy_info"
+    ADD = "proxy_add"
 
 
 class PoolsCallbacks(StrEnum):
     INFO = "pools_info"
+    SHOW = "pools_show"
+    ADD = "pools_add"
+    RUN = "pools_run"
+    STOP = "pools_stop"
+    UPDATE = "pools_update"
+    DEL = "pools_del"
 
 
 class ExchangesCallbacks(StrEnum):
