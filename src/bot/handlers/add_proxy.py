@@ -99,7 +99,7 @@ async def parse_line(raw: str) -> dict | None:
 async def proxy_add_start(cb: CallbackQuery, state: FSMContext):
     await state.set_state(AddProxy.waiting_country)
     await cb.message.edit_text(
-        "🌍 Введите двухбуквенный ISO‑код страны (или <b>*</b> — «без страны»):",
+        "🌍 Введите страну (или <b>*</b> — «без страны»):",
         parse_mode="HTML",
     )
     await cb.answer()

@@ -15,6 +15,34 @@ from aiohttp_socks import ProxyConnector
 from aiohttp import ClientTimeout, ClientSession
 from aiohttp.client_exceptions import ServerDisconnectedError, ClientConnectorError
 from loguru import logger
+from sqlalchemy import select, update
+from src.core.models.base import Account, Proxy
+from src.core.clients.databases.postgres import pg
+from prometheus_client import Summary
+import aiohttp
+from cryptography.hazmat.primitives.asymmetric import ed25519
+from aiohttp_socks import ProxyConnector
+from aiohttp import ClientTimeout, ClientSession
+from aiohttp.client_exceptions import ServerDisconnectedError, ClientConnectorError
+from loguru import logger
+from tenacity import (
+    AsyncRetrying,
+    RetryError,
+    stop_after_attempt,
+    wait_fixed,
+    retry_if_exception_type,
+)
+from sqlalchemy import select, update
+from prometheus_client import Summary
+
+from src.core.models.base import Account, Proxy
+from src.core.clients.databases.postgres import pg
+
+REQUEST_LATENCY = Summary(
+    "backpack_request_duration_seconds",
+    "Время выполнения запроса к Backpack API",
+    ["instruction", "method"],
+)
 
 
 class BackpackExchangeClient:
@@ -58,6 +86,36 @@ class BackpackExchangeClient:
 
         return base64.b64encode(self.private_key_obj.sign(sign_str.encode())).decode()
 
+    async def _request_with_retry(
+        self,
+        send_func,
+        *args,
+        instruction: Optional[str] = None,
+        method: Optional[str] = None,
+        endpoint: Optional[str] = None,
+        retries: int = 2,
+    ) -> Any:
+        """
+        Утилита для исполнения запроса с retry через tenacity.
+        """
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(retries),
+            wait=wait_fixed(1),
+            retry=retry_if_exception_type(
+                (ServerDisconnectedError, ClientConnectorError)
+            ),
+            reraise=True,
+        ):
+            with REQUEST_LATENCY.labels(
+                instruction=instruction or "", method=(method or "").upper()
+            ).time():
+                try:
+                    return await send_func(*args)
+                except (ServerDisconnectedError, ClientConnectorError) as ex:
+                    logger.error("Proxy failure on {} {}: {}", method, endpoint, ex)
+                    await self.change_proxy()
+                    raise
+
     async def _send_request(
         self,
         method: str,
@@ -66,27 +124,24 @@ class BackpackExchangeClient:
         params: Optional[dict] = None,
         need_response: bool = True,
     ) -> Any:
-        timestamp = int(time.time() * 1000)
-        headers = {
-            "X-API-Key": self.api_key,
-            "X-Signature": self._generate_signature(instruction, timestamp, params),
-            "X-Timestamp": str(timestamp),
-            "X-Window": "5000",
-            "Content-Type": "application/json; charset=utf-8",
-            **self.fake_headers,
-        }
         url = f"{self.base_url}{endpoint}"
         data = json.dumps(params) if method.upper() in ("POST", "PATCH") else None
 
-        # ProxyConnector для SOCKS5
-        connector = ProxyConnector.from_url(self.proxy_url) if self.proxy_url else None
-
-        timeout = ClientTimeout(total=30)
-
-        try:
-            logger.debug(
-                "Sending request {} {} with proxy: {}", method, url, self.proxy_url
+        async def _inner():
+            headers = {
+                "X-API-Key": self.api_key,
+                "X-Signature": self._generate_signature(
+                    instruction, int(time.time() * 1000), params
+                ),
+                "X-Timestamp": str(int(time.time() * 1000)),
+                "X-Window": "5000",
+                "Content-Type": "application/json; charset=utf-8",
+                **self.fake_headers,
+            }
+            connector = (
+                ProxyConnector.from_url(self.proxy_url) if self.proxy_url else None
             )
+            timeout = ClientTimeout(total=30)
             async with ClientSession(connector=connector, timeout=timeout) as session:
                 async with session.request(
                     method=method.upper(),
@@ -99,20 +154,20 @@ class BackpackExchangeClient:
                     text = await resp.text()
                     if not need_response:
                         return None
-                    try:
-                        return json.loads(text)
-                    except json.JSONDecodeError:
-                        logger.error("JSON decode error from {}: {}", url, text)
-                        return {"error": "invalid_json", "raw": text}
-        except (ServerDisconnectedError, ClientConnectorError) as e:
-            logger.error(
-                "Request failed to {} with proxy {}: {}", url, self.proxy_url, str(e)
+                    return json.loads(text)
+
+        try:
+            return await self._request_with_retry(
+                _inner, instruction=instruction, method=method, endpoint=endpoint
             )
+        except RetryError as e:
+            logger.error("Max retries reached for {} {}: {}", method, endpoint, e)
             return {"error": "proxy_failure", "message": str(e)}
+        except json.JSONDecodeError:
+            logger.error("Invalid JSON from {}: {}", url, await resp.text())
+            return {"error": "invalid_json"}
         except Exception as e:
-            logger.exception(
-                "Unhandled exception while sending request to {}: {}", url, str(e)
-            )
+            logger.exception("Unhandled error: %s", e)
             return {"error": "unexpected", "message": str(e)}
 
     async def send_public_request(
@@ -121,22 +176,37 @@ class BackpackExchangeClient:
         endpoint: str,
         params: Optional[dict] = None,
     ) -> Any:
-        async with aiohttp.ClientSession() as session:
-            async with session.request(
-                method=method.upper(),
-                url=f"{self.base_url}{endpoint}",
-                headers={
-                    "Content-Type": "application/json; charset=utf-8",
-                    **self.fake_headers,
-                },
-                params=params,
-                proxy=self.proxy_url,
-                cookies=self.cookies,
-            ) as resp:
-                try:
-                    return await resp.json()
-                except Exception as e:
-                    print(f"Failed request: {e}")
+        url = f"{self.base_url}{endpoint}"
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            **self.fake_headers,
+        }
+
+        async def _inner_public():
+            connector = (
+                ProxyConnector.from_url(self.proxy_url) if self.proxy_url else None
+            )
+            timeout = ClientTimeout(total=30)
+            async with ClientSession(connector=connector, timeout=timeout) as session:
+                async with session.request(
+                    method=method.upper(),
+                    url=url,
+                    headers=headers,
+                    params=params,
+                    cookies=self.cookies,
+                ) as resp:
+                    text = await resp.text()
+                    return json.loads(text)
+
+        try:
+            return await self._request_with_retry(
+                _inner_public, instruction="public", method=method, endpoint=endpoint
+            )
+        except RetryError as e:
+            logger.error(
+                "Max retries reached for public {} {}: {}", method, endpoint, e
+            )
+            return {"error": "proxy_failure", "message": str(e)}
 
     async def get_balance(self) -> dict:
         response = await self._send_request(
@@ -501,6 +571,63 @@ class BackpackExchangeClient:
 
         result.sort(key=lambda x: x["usd"], reverse=True)
         return result
+
+    async def change_proxy(self) -> None:
+        """
+        Снимает флаг in_use у текущего прокси и назначает новый прокси
+        (in_use=True, account_id=self.account_id) для этого клиента.
+        """
+        async with pg.session_maker() as session:
+            # Найти аккаунт по api_key
+            account = await session.scalar(
+                select(Account).where(Account.api_key == self.api_key)
+            )
+            if not account:
+                logger.warning("Не найден аккаунт для api_key=%s", self.api_key)
+                return
+
+            # Освободить старый прокси
+            old_proxy = await session.scalar(
+                select(Proxy).where(
+                    Proxy.account_id == account.id, Proxy.in_use.is_(True)
+                )
+            )
+            if old_proxy:
+                await session.execute(
+                    update(Proxy).where(Proxy.id == old_proxy.id).values(in_use=False)
+                )
+                logger.info(
+                    "Освобождён старый прокси id=%s для аккаунта %s",
+                    old_proxy.id,
+                    account.id,
+                )
+
+            # Назначить новый прокси
+            new_proxy = await session.scalar(
+                select(Proxy)
+                .where(
+                    Proxy.in_use.is_(False),
+                    Proxy.account_id.is_(None),
+                    Proxy.country == account.country,  # при необходимости
+                )
+                .limit(1)
+            )
+            if not new_proxy:
+                logger.error(
+                    "Нет свободных прокси для назначения аккаунту %s", account.id
+                )
+                await session.commit()  # фиксируем освобождение старого, если было
+                return
+
+            await session.execute(
+                update(Proxy)
+                .where(Proxy.id == new_proxy.id)
+                .values(account_id=account.id, in_use=True)
+            )
+            await session.commit()
+            logger.info(
+                "Назначен новый прокси id=%s для аккаунта %s", new_proxy.id, account.id
+            )
 
     async def get_order_book_depth(self, symbol: str) -> dict:
         return await self.send_public_request(

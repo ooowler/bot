@@ -28,6 +28,7 @@ async def tmp():
         api_key=os.getenv("TEST_SUB_API_KEY"),
         api_secret=os.getenv("TEST_SUB_API_SECRET"),
     )
+    await main.change_proxy()
 
     # sub_balance = await sub.get_balance()
     # print(f"sub_balance: {sub_balance}")
@@ -108,6 +109,9 @@ async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     storage = RedisStorage.from_url(REDIS_URL)
     dp = Dispatcher(storage=storage)
+
+    # from prometheus_client import start_http_server
+    # start_http_server(8000)
 
     register_all_handlers(dp)
 

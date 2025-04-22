@@ -12,3 +12,4 @@ asyncpg
 cryptography
 faker
 aiohttp-socks
+tenacity

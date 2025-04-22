@@ -1,5 +1,6 @@
+# src/bot/services/pools/subacc_trading_strategy.py
+
 import random
-import json
 from decimal import Decimal, ROUND_DOWN
 
 from loguru import logger
@@ -10,9 +11,10 @@ from src.core.clients.exchanges.backpack.backpack import BackpackExchangeClient
 from src.core.models.base import Account, DepositAddress, Chain, Proxy, FakeHeader
 
 # Constants
-USD_TOP_UP = Decimal("0.1")
-MIN_SOL_STEP = Decimal("0.000001")
-MIN_BTC_STEP = Decimal("0.000001")
+MIN_DEPOSIT_USD = Decimal("0.1")
+LEVERAGE = 50
+# SYMBOLS = ["ETH_USDC_PERP", "SOL_USDC_PERP", "BTC_USDC_PERP"]
+SYMBOLS = ["ETH_USDC_PERP", "SOL_USDC_PERP"]
 
 
 async def _select_random_main_account() -> Account | None:
@@ -32,9 +34,6 @@ async def _get_sub_accounts(main_id: int) -> list[Account]:
 
 
 async def _load_proxy_and_fake(account_id: int) -> tuple[str | None, dict, dict]:
-    """
-    Возвращает proxy_url, fake_headers и cookies для данного account_id.
-    """
     async with pg.session_maker() as session:
         proxy_obj = await session.scalar(
             select(Proxy).where(Proxy.account_id == account_id, Proxy.in_use.is_(True))
@@ -46,75 +45,67 @@ async def _load_proxy_and_fake(account_id: int) -> tuple[str | None, dict, dict]
     if proxy_obj:
         proxy_url = f"socks5://{proxy_obj.login}:{proxy_obj.password}@{proxy_obj.ip}:{proxy_obj.port}"
         logger.info("Constructed proxy_url: {}", proxy_url)
-    fake_headers = fake_obj.headers if fake_obj and fake_obj.headers else {}
+    headers = fake_obj.headers if fake_obj and fake_obj.headers else {}
     cookies = fake_obj.cookies if fake_obj and fake_obj.cookies else {}
-    return proxy_url, fake_headers, cookies
+    return proxy_url, headers, cookies
 
 
-async def _sell_all_non_usdc(client: BackpackExchangeClient) -> None:
+async def _compute_total_usd_balance(client: BackpackExchangeClient) -> Decimal:
+    """
+    Считаем общий USD-эквивалент баланса по всем активам на суб-акке.
+    """
     balance = await client.get_balance()
     lend = await client.get_borrow_lend_positions()
+    tickers = await client.get_all_tickers()
+    prices = {t["symbol"]: Decimal(t["lastPrice"]) for t in tickers}
+
     net_qty = {
         p["symbol"].replace("_USDC", ""): Decimal(p.get("netQuantity", "0"))
         for p in lend
         if isinstance(p.get("netQuantity"), str)
     }
+
+    total_usd = Decimal("0")
     for token, data in balance.items():
+        available = Decimal(data.get("available", "0"))
+        qty = available + net_qty.get(token, Decimal("0"))
+        if qty <= 0:
+            continue
         if token == "USDC":
-            continue
-        total = Decimal(data.get("available", "0")) + net_qty.get(token, Decimal(0))
-        if total <= 0:
-            continue
-        pair = f"{token}_USDC"
-        depth = await client.get_order_book_depth(pair)
-        asks = depth.get("asks", [])
-        if not asks:
-            continue
-        precision = abs(Decimal(asks[0][1]).as_tuple().exponent)
-        qty = total.quantize(
-            Decimal(f"1e-{precision}"), rounding=ROUND_DOWN
-        ) or Decimal(f"1e-{precision}")
-        await client.create_order(
-            symbol=pair, side="Ask", quantity=str(qty), order_type="Market"
-        )
-        logger.info("Sold {} {} -> USDC", qty, token)
+            total_usd += qty
+        else:
+            pair = f"{token}_USDC"
+            price = prices.get(pair) or prices.get(f"{pair}_PERP")
+            if price:
+                total_usd += qty * price
 
-
-async def _compute_total_usdc(client: BackpackExchangeClient) -> Decimal:
-    balance = await client.get_balance()
-    lend = await client.get_borrow_lend_positions()
-    avail = Decimal(balance.get("USDC", {}).get("available", 0))
-    net = Decimal("0")
-    for p in lend:
-        if p.get("symbol") == "USDC":
-            try:
-                net = Decimal(p.get("netQuantity", "0"))
-            except:
-                pass
-    total = avail + net
-    logger.debug("Computed total USDC = {}", total)
-    return total
+    logger.debug("Computed total USD balance = {}", total_usd)
+    return total_usd
 
 
 async def _top_up_sol(
     main_client: BackpackExchangeClient, sub_id: int, sol_address: str
 ) -> None:
-    depth = await main_client.get_order_book_depth("SOL_USDC")
-    asks = depth.get("asks", [])
+    """
+    Топ-ап суб-акка в SOL, если USD-эквивалента меньше MIN_DEPOSIT_USD.
+    """
+    book = await main_client.get_order_book_depth("SOL_USDC")
+    asks = book.get("asks", [])
     if not asks:
-        logger.error("Не удалось получить стакан SOL_USDC для топ-апа sub {}", sub_id)
+        logger.error("Sub {}: cannot fetch SOL_USDC book", sub_id)
         return
-    ask_price = Decimal(asks[0][0])
-    raw_qty = USD_TOP_UP / ask_price
-    sol_qty = raw_qty.quantize(MIN_SOL_STEP, rounding=ROUND_DOWN) or MIN_SOL_STEP
-    logger.info("Топ-ап: перевожу {} SOL на sub {}", sol_qty, sub_id)
+    price = Decimal(asks[0][0])
+    qty = (MIN_DEPOSIT_USD / price).quantize(Decimal("1e-6"), ROUND_DOWN) or Decimal(
+        "1e-6"
+    )
+    logger.info("Sub {}: top-up {} SOL (~${})", sub_id, qty, MIN_DEPOSIT_USD)
     resp = await main_client.request_withdrawal(
         address=sol_address,
         blockchain="Solana",
         symbol="SOL",
-        quantity=str(sol_qty),
+        quantity=str(qty),
     )
-    logger.info("Withdrawal response for sub {}: {}", sub_id, resp)
+    logger.info("Sub {}: withdrawal response: {}", sub_id, resp)
 
 
 async def _open_market_order(
@@ -124,42 +115,50 @@ async def _open_market_order(
     amount_usd: Decimal,
     pool_id: int,
     sub_id: int,
-) -> None:
+) -> dict:
+    """
+    Открывает маркет-фьючерс (symbol_PERP) по объему amount_usd.
+    """
     depth = await client.get_order_book_depth(symbol)
-    bids = depth.get("bids", [])
-    if not bids:
-        logger.error("Pool {}: нет bids для {} sub {}", pool_id, symbol, sub_id)
+    book = depth.get("bids" if side == "Bid" else "asks", [])
+    if not book:
+        logger.error("Pool {} Sub {}: no book for {}", pool_id, sub_id, symbol)
         return
-    price = Decimal(bids[-1][0])
-    sample = bids[-1][1]
-    precision = abs(Decimal(sample).as_tuple().exponent)
+    price = Decimal(book[-1][0] if side == "Bid" else book[0][0])
+    precision = abs(Decimal(book[0][1]).as_tuple().exponent)
     step = Decimal(f"1e-{precision}")
-    raw_qty = amount_usd / price
-    qty = raw_qty.quantize(step, rounding=ROUND_DOWN) or step
+    qty = (amount_usd / price).quantize(step, ROUND_DOWN) or step
+
     logger.info(
-        "Pool {}: ордер {} {} qty={} на sub {}", pool_id, side, symbol, qty, sub_id
+        "Pool {} Sub {}: placing {} {} qty={} (~${})",
+        pool_id,
+        sub_id,
+        side,
+        symbol,
+        qty,
+        amount_usd,
     )
     resp = await client.create_order(
-        symbol=symbol, side=side, quantity=str(qty), order_type="Market"
+        symbol=symbol,
+        side=side,
+        quantity=str(qty),
+        order_type="Market",
     )
     logger.info(
-        "Pool {}: ответ ордера {} для sub {} -> {}", pool_id, symbol, sub_id, resp
+        "Pool {} Sub {}: order response for {} -> {}", pool_id, sub_id, symbol, resp
     )
+
+    return resp
 
 
 async def run_subacc_trading_strategy(pool_id: int) -> None:
-    """
-    Основная стратегия: для каждого sub аккаунта в пуле продаются все токены,
-    проверяется USDC, пополняется SOL и открываются perp ордера.
-    """
-    logger.info("Pool {}: запускаю стратегию", pool_id)
+    logger.info("Pool {}: start strategy", pool_id)
 
     main = await _select_random_main_account()
     if not main:
-        logger.warning("Pool {}: нет main аккаунтов", pool_id)
+        logger.warning("Pool {}: no main accounts", pool_id)
         return
 
-    logger.info("Pool {}: выбран main {} ({})", pool_id, main.id, main.wallet)
     proxy_url, headers, cookies = await _load_proxy_and_fake(main.id)
     main_client = BackpackExchangeClient(
         base_url="https://api.backpack.exchange/",
@@ -172,11 +171,11 @@ async def run_subacc_trading_strategy(pool_id: int) -> None:
 
     subs = await _get_sub_accounts(main.id)
     if not subs:
-        logger.warning("Pool {}: main {} не имеет sub", pool_id, main.id)
+        logger.warning("Pool {}: main {} has no subs", pool_id, main.id)
         return
 
     for sub in subs:
-        logger.info("Pool {}: обрабатываю sub {} ({})", pool_id, sub.id, sub.wallet)
+        logger.info("Pool {}: processing sub {} ({})", pool_id, sub.id, sub.wallet)
         proxy_url, headers, cookies = await _load_proxy_and_fake(sub.id)
         sub_client = BackpackExchangeClient(
             base_url="https://api.backpack.exchange/",
@@ -187,28 +186,28 @@ async def run_subacc_trading_strategy(pool_id: int) -> None:
             cookies=cookies,
         )
 
-        # 0) Проверяем открытые perp позиции
+        # 1) Проверяем открытые perp-позиции
         positions = await sub_client.get_open_positions()
-        open_perps = [p for p in positions if abs(Decimal(p.get("netQuantity", 0))) > 0]
-        if len(open_perps) == 2:
+        open_perms = [p for p in positions]
+        # open_perms = [p for p in positions if abs(Decimal(p.get("netQuantity", 0))) > 0]
+        if len(open_perms) in (2, 3):
             logger.info(
-                "Pool {}: sub {} уже имеет 2 позиции, пропускаю", pool_id, sub.id
+                "Pool {} Sub {}: already 2 or 3 open positions, skip", pool_id, sub.id
             )
             continue
-        if len(open_perps) == 1:
+        if len(open_perms) == 1:
             resp = await sub_client.close_all_perp_positions()
-            logger.info(
-                "Pool {}: sub {} закрыты все позиции -> {}", pool_id, sub.id, resp
-            )
-            continue
+            await sub_client.update_account_settings(leverage_limit=LEVERAGE)
+            logger.info("Pool {} Sub {}: closed positions -> {}", pool_id, sub.id, resp)
 
-        # 1) Sell non-USDC
-        await _sell_all_non_usdc(sub_client)
+        if len(open_perms) == 0:
+            await sub_client.update_account_settings(leverage_limit=LEVERAGE)
 
-        # 2) Compute total USDC
-        total_usdc = await _compute_total_usdc(sub_client)
-        if total_usdc < USD_TOP_UP:
-            # Top-up SOL
+        # 2) Compute total USD balance across all tokens
+        total_usd = await _compute_total_usd_balance(sub_client)
+
+        # 3) Top-up if below threshold
+        if total_usd < MIN_DEPOSIT_USD:
             async with pg.session_maker() as session:
                 sol_addr = await session.scalar(
                     select(DepositAddress.address).where(
@@ -219,23 +218,23 @@ async def run_subacc_trading_strategy(pool_id: int) -> None:
             if sol_addr:
                 await _top_up_sol(main_client, sub.id, sol_addr)
             else:
-                logger.error("Pool {}: у sub {} нет SOL адреса", pool_id, sub.id)
-            continue
+                logger.error("Pool {} Sub {}: no SOL address", pool_id, sub.id)
 
-        # 3) Open perp market orders
-        await _open_market_order(
-            sub_client,
-            symbol="SOL_USDC_PERP",
-            side="Bid",
-            amount_usd=USD_TOP_UP,
-            pool_id=pool_id,
-            sub_id=sub.id,
-        )
-        await _open_market_order(
-            sub_client,
-            symbol="BTC_USDC_PERP",
-            side="Ask",
-            amount_usd=USD_TOP_UP,
-            pool_id=pool_id,
-            sub_id=sub.id,
-        )
+        alloc = (total_usd / len(SYMBOLS)).quantize(Decimal("0.000001"), ROUND_DOWN)
+        primary = random.choice(["Bid", "Ask"])
+        opposite = "Ask" if primary == "Bid" else "Bid"
+        odd = random.randrange(2)
+
+        for idx, sym in enumerate(SYMBOLS):
+            side = opposite if idx == odd else primary
+            for step in ["0.9", "0.8", "0.7", "0.6", "0.5"]:
+                res = await _open_market_order(
+                    sub_client,
+                    symbol=sym,
+                    side=side,
+                    amount_usd=alloc * LEVERAGE * Decimal(step),
+                    pool_id=pool_id,
+                    sub_id=sub.id,
+                )
+                if res.get("createdAt"):
+                    break

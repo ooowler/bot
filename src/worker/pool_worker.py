@@ -21,4 +21,4 @@ async def run_pools_forever():
             if pool.pool_type.lower() == "sub_required":
                 await run_subacc_trading_strategy(pool.id)
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(60 * 45)

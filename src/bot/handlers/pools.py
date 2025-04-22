@@ -243,30 +243,35 @@ async def pool_stop(cb: CallbackQuery):
 
 @pools_router.callback_query(F.data.startswith("pool_update:"))
 async def pool_update(cb: CallbackQuery):
-    """Обновление списка аккаунтов в пуле."""
     await cb.answer()
     pid = int(cb.data.split(":", 1)[1])
-    async with pg.session_maker() as sess:
-        pool = await sess.get(Pool, pid)
-        if not pool:
-            await cb.message.answer("❌ Пул не найден")
-            return
 
-        current_ids = {link.account_id for link in pool.accounts}
-        rows = (
-            await sess.execute(
-                select(Account.parent_id, func.count())
-                .where(Account.parent_id.isnot(None))
-                .group_by(Account.parent_id)
-            )
-        ).all()
-        parent_ids = {pid for pid, _ in rows if pid}
+    async with pg.session_maker() as sess:
+        # 1. Fetch existing link IDs directly
+        current_ids = set(
+            (
+                await sess.scalars(
+                    select(PoolAccountLink.account_id).where(
+                        PoolAccountLink.pool_id == pid
+                    )
+                )
+            ).all()
+        )
+
+        # 2. Compute parent_ids as before
+        rows = await sess.execute(
+            select(Account.parent_id, func.count())
+            .where(Account.parent_id.isnot(None))
+            .group_by(Account.parent_id)
+        )
+        parent_ids = {pid for pid, _ in rows.all() if pid}
 
         new_ids = set(
-            await sess.scalars(
-                select(Account.id).where(
-                    Account.parent_id.is_(None),
-                    Account.id.in_(parent_ids),
+            (
+                await sess.scalars(
+                    select(Account.id).where(
+                        Account.parent_id.is_(None), Account.id.in_(parent_ids)
+                    )
                 )
             ).all()
         )
@@ -283,6 +288,7 @@ async def pool_update(cb: CallbackQuery):
                     PoolAccountLink.account_id.in_(to_remove),
                 )
             )
+
         await sess.commit()
 
     await cb.message.answer(

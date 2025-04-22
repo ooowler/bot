@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from sqlalchemy import select, func
 
+from bot.services.pools.subacc_trading_strategy import _load_proxy_and_fake
 from src.core.clients.databases.postgres import pg
 from src.core.models.base import Account, DepositAddress
 from src.bot.callbacks import Callbacks
@@ -123,10 +124,14 @@ async def show_balance(cb: CallbackQuery, state: FSMContext):
         await cb.answer("Аккаунт не найден", show_alert=True)
         return
 
+    proxy_url, headers, cookies = await _load_proxy_and_fake(acc.id)
     client = BackpackExchangeClient(
         base_url="https://api.backpack.exchange/",
         api_key=acc.api_key,
         api_secret=acc.api_secret,
+        proxy_url=proxy_url,
+        fake_headers=headers,
+        cookies=cookies,
     )
 
     tokens = await client.get_balances_usd()  # готовый агрегационный метод
@@ -136,13 +141,17 @@ async def show_balance(cb: CallbackQuery, state: FSMContext):
         return
 
     lines = [
-        f"{i+1}. <b>{t['token']}</b> — {t['quantity']:.8f} ≈ <code>{t['usd']:.2f}$</code>"
+        f"{i+1}. <b>{t['token']}</b> — {t['quantity']:.5f} ≈ {t['usd']:.2f}$"
         for i, t in enumerate(tokens)
     ]
     total = sum(t["usd"] for t in tokens)
 
+    message = "<b>💰 Баланс аккаунта:</b>\n"
+    message += "\n".join(lines)
+    message += f"\n\n<b>Итого:</b> <code>{total:.2f}$</code>"
+
     await cb.answer()
-    await cb.message.answer(f"Баланс аккаунта: {lines}")
+    await cb.message.answer(message, parse_mode="HTML")
 
 
 @view_account.callback_query(
