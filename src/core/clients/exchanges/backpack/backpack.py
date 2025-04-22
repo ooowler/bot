@@ -33,7 +33,7 @@ from tenacity import (
     retry_if_exception_type,
 )
 from sqlalchemy import select, update
-from prometheus_client import Summary
+from prometheus_client import Summary, Counter
 
 from src.core.models.base import Account, Proxy
 from src.core.clients.databases.postgres import pg
@@ -41,6 +41,12 @@ from src.core.clients.databases.postgres import pg
 REQUEST_LATENCY = Summary(
     "backpack_request_duration_seconds",
     "Время выполнения запроса к Backpack API",
+    ["instruction", "method"],
+)
+
+REQUEST_COUNT = Counter(
+    "backpack_request_total",
+    "Количество запросов к Backpack API",
     ["instruction", "method"],
 )
 
@@ -106,6 +112,9 @@ class BackpackExchangeClient:
             ),
             reraise=True,
         ):
+            REQUEST_COUNT.labels(
+                instruction=instruction or "", method=(method or "").upper()
+            ).inc()
             with REQUEST_LATENCY.labels(
                 instruction=instruction or "", method=(method or "").upper()
             ).time():

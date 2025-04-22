@@ -105,6 +105,10 @@ async def tmp():
 async def main():
     # await tmp()
     # return
+    from prometheus_client import start_http_server
+
+    start_http_server(8000)
+
     logger.info("Запускаем Telegram бота")
     bot = Bot(token=TELEGRAM_TOKEN)
     storage = RedisStorage.from_url(REDIS_URL)

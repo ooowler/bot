@@ -1,15 +1,6 @@
 version: '3.9'
 
 services:
-  metrics_server:
-    build:
-      context: .
-    command: python -m run_metrics_server
-    volumes:
-      - ./metrics:/app/metrics
-    ports:
-      - "8000:8000"
-
   telegram_bot:
     build:
       context: .
@@ -17,8 +8,8 @@ services:
       - .env
     volumes:
       - metrics_data:/app/metrics
-    environment:
-      - PROMETHEUS_MULTIPROC_DIR=/app/metrics
+    ports:
+      - "8000:8000"
 
   pool_worker:
     build:
@@ -28,8 +19,8 @@ services:
     command: python -u -m src.pool_runner
     volumes:
       - metrics_data:/app/metrics
-    environment:
-      - PROMETHEUS_MULTIPROC_DIR=/app/metrics
+    ports:
+      - "8001:8001"
 
 volumes:
   metrics_data:
