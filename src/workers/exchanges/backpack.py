@@ -2,15 +2,17 @@ import asyncio
 from loguru import logger
 from sqlalchemy import select
 
+from src.core.strategies.exchanges.backpack.liquidation import (
+    run_subacc_trading_strategy,
+)
 from src.core.clients.databases.postgres import pg
 from src.core.models.pool import Pool
-from src.bot.services.pools.subacc_trading_strategy import run_subacc_trading_strategy
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
-async def run_pools_forever():
+async def run_forever():
     logger.info("🚀 Пул-демон запущен…")
     while True:
         try:
@@ -35,7 +37,7 @@ async def main():
     start_http_server(8001)
 
     logger.info("🚀 Запуск пул-демона…")
-    await run_pools_forever()
+    await run_forever()
 
 
 if __name__ == "__main__":

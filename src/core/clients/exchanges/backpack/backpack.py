@@ -1,15 +1,10 @@
 import base64
 import json
 import time
-from typing import Any, Optional, Dict
+from typing import Any, Optional
 from decimal import Decimal, ROUND_DOWN
 
-import aiohttp
 from cryptography.hazmat.primitives.asymmetric import ed25519
-from src.core.clients.exchanges.backpack.schemas.balance import (
-    BalanceResponse,
-    TokenBalance,
-)
 
 from aiohttp_socks import ProxyConnector
 from aiohttp import ClientTimeout, ClientSession
@@ -37,6 +32,7 @@ from prometheus_client import Summary, Counter
 
 from src.core.models import Account, Proxy
 from src.core.clients.databases.postgres import pg
+from decimal import Decimal, ROUND_DOWN
 
 REQUEST_LATENCY = Summary(
     "backpack_request_duration_seconds",
@@ -490,8 +486,6 @@ class BackpackExchangeClient:
             params=payload,
             need_response=False,
         )
-
-    from decimal import Decimal, ROUND_DOWN
 
     async def buy_token_with_stables(self, symbol: str, percent: float = 100.0) -> dict:
         if not symbol.endswith("_USDC"):

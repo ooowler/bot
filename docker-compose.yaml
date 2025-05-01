@@ -21,12 +21,12 @@ services:
     ports:
       - "8000:8000"
 
-  backpack_pools:
+  backpack_worker:
     build:
       context: .
     env_file:
       - .env
-    command: python -u -m src.workers.backpack_pools
+    command: python -u -m src.workers.exchanges.backpack
     volumes:
       - metrics_data:/app/metrics
     ports:

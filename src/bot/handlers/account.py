@@ -9,7 +9,6 @@ from src.bot.keyboards.exchanges.exchanges import (
     get_exchanges_keyboard,
     get_exchanges_actions_keyboard,
 )
-from src.bot.states.account import AddAccount, ExecuteAccount
 from src.bot.keyboards.start.start import get_welcome_keyboard
 
 account_router = Router()

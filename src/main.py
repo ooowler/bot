@@ -1,9 +1,9 @@
-import os
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 from loguru import logger
 from dotenv import load_dotenv
+from src.settings import DEV_MODE, TELEGRAM_TOKEN, REDIS_FSM_URL
 from src.core.models import User
 from src.core.clients.databases.postgres import pg
 from prometheus_client import start_http_server
@@ -11,16 +11,9 @@ from src.bot.handlers import register_all_handlers
 
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-REDIS_FSM_URL = os.getenv("REDIS_FSM_URL")
-
-if not all([TELEGRAM_TOKEN, REDIS_FSM_URL]):
-    logger.error(f"TELEGRAM_TOKEN and REDIS_FSM_URL are required")
-    exit(1)
-
 
 async def main():
-    if os.getenv("DEV_MODE") == "1":
+    if DEV_MODE:
         from src.dev import dev
 
         await dev()
