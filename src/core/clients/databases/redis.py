@@ -1,9 +1,9 @@
 import os
 import redis.asyncio as aioredis
 from functools import cached_property
+from typing import Optional, Union
 
 REDIS_APP_URL = os.getenv("REDIS_APP_URL")
-
 
 class RedisClient:
     def __init__(self, url: str = REDIS_APP_URL) -> None:
@@ -16,5 +16,13 @@ class RedisClient:
     async def ping(self) -> bool:
         return await self.client.ping()
 
+    async def set(self, key: str, value: Union[str, bytes], ttl: Optional[int] = None) -> bool:
+        return await self.client.set(name=key, value=value, ex=ttl)
+
+    async def get(self, key: str) -> Optional[str]:
+        return await self.client.get(name=key)
+
+    async def delete(self, key: str) -> int:
+        return await self.client.delete(key)
 
 redis = RedisClient()
