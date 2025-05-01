@@ -1,0 +1,92 @@
+from .enums import Chain
+from .base import Base
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import ENUM, JSONB
+from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.orm import relationship
+
+
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True)
+    parent_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+
+    name = Column(String, nullable=False)
+    exchange = Column(String, nullable=False, default="backpack")
+    api_key = Column(String, nullable=False)
+    api_secret = Column(String, nullable=False)
+    country = Column(String)
+    wallet = Column(String)
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    # self‑relation for sub‑accounts
+    parent = relationship("Account", remote_side=[id], back_populates="children")
+    children = relationship("Account", back_populates="parent")
+
+    deposit_addresses = relationship("DepositAddress", back_populates="account")
+    users = relationship("UserAccountLink", back_populates="account")
+
+    @property
+    def is_sub(self) -> bool:
+        return self.parent_id is not None
+
+
+class Proxy(Base):
+    __tablename__ = "proxies"
+
+    id = Column(Integer, primary_key=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"))
+    ip = Column(String, nullable=False)
+    port = Column(Integer, nullable=False)
+    login = Column(String, nullable=False)
+    password = Column(String, nullable=False)
+    country = Column(String, nullable=False)
+
+    in_use = Column(Boolean, default=False, nullable=False)
+    fails = Column(Integer, default=0, nullable=False)
+
+    account = relationship("Account", backref="proxy", uselist=False)
+
+
+class FakeHeader(Base):
+    __tablename__ = "fake_headers"
+
+    id = Column(Integer, primary_key=True)
+    account_id = Column(
+        Integer, ForeignKey("accounts.id", ondelete="CASCADE"), unique=True
+    )
+    headers = Column(JSON, nullable=False)
+    cookies = Column(JSON, nullable=False)
+
+    account = relationship("Account", backref="fake_header", uselist=False)
+
+
+class DepositAddress(Base):
+    __tablename__ = "deposit_addresses"
+
+    id = Column(Integer, primary_key=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+
+    chain = Column(ENUM(Chain, name="blockchain_enum"), nullable=False)
+    address = Column(String, nullable=False)
+    memo = Column(String)
+    is_whitelisted = Column(Boolean, default=False)
+    meta = Column(JSONB)
+
+    account = relationship("Account", back_populates="deposit_addresses")
+
+    __table_args__ = (UniqueConstraint("chain", "address", name="uq_chain_address"),)

@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 from loguru import logger
 from sqlalchemy import select
-from src.core.models.base import User
+from src.core.models import User
 from src.core.clients.databases.postgres import pg
 from src.bot.keyboards.start.start import get_welcome_keyboard
 

@@ -11,7 +11,7 @@ from loguru import logger
 from src.bot.callbacks import Callbacks
 from src.bot.keyboards.start.start import get_welcome_keyboard
 from src.core.clients.databases.postgres import pg
-from src.core.models.base import (
+from src.core.models import (
     User,
     Account,
     UserAccountLink,

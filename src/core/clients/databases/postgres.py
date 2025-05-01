@@ -1,7 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 import os
-from sqlalchemy import text
-from loguru import logger
 
 from dotenv import load_dotenv
 
@@ -21,13 +19,6 @@ class PostgresClient:
             class_=AsyncSession,
             expire_on_commit=False,
         )
-
-    async def test_connection(self):
-        async with self.session_maker() as session:
-            result = await session.execute(text("SELECT 1"))
-            value = result.scalar_one()
-            logger.info(f"✅ Проверка подключения: {value}")
-            return value
 
 
 pg = PostgresClient()

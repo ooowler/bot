@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from src.core.clients.databases.postgres import pg
 from src.core.clients.exchanges.backpack.backpack import BackpackExchangeClient
-from src.core.models.base import Account, DepositAddress, Chain, Proxy, FakeHeader
+from src.core.models import Account, DepositAddress, Chain, Proxy, FakeHeader
 
 # Constants
 MIN_DEPOSIT_USD = Decimal("0.1")
@@ -98,11 +98,11 @@ async def _top_up_sol(
     qty = (MIN_DEPOSIT_USD / price).quantize(Decimal("1e-6"), ROUND_DOWN) or Decimal(
         "1e-6"
     )
-    logger.info("Sub {}: top-up {} SOL (~${})", sub_id, qty, MIN_DEPOSIT_USD)
+    logger.info("Sub {}: top-up {} USDC (~${})", sub_id, qty, MIN_DEPOSIT_USD)
     resp = await main_client.request_withdrawal(
         address=sol_address,
-        blockchain="Solana",
-        symbol="SOL",
+        blockchain=Chain.EQUALS_MONEY,
+        symbol="USDC",
         quantity=str(qty),
     )
     logger.info("Sub {}: withdrawal response: {}", sub_id, resp)

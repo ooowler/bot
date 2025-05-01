@@ -16,7 +16,7 @@ from aiohttp import ClientTimeout, ClientSession
 from aiohttp.client_exceptions import ServerDisconnectedError, ClientConnectorError
 from loguru import logger
 from sqlalchemy import select, update
-from src.core.models.base import Account, Proxy
+from src.core.models import Account, Proxy
 from src.core.clients.databases.postgres import pg
 from prometheus_client import Summary
 import aiohttp
@@ -35,7 +35,7 @@ from tenacity import (
 from sqlalchemy import select, update
 from prometheus_client import Summary, Counter
 
-from src.core.models.base import Account, Proxy
+from src.core.models import Account, Proxy
 from src.core.clients.databases.postgres import pg
 
 REQUEST_LATENCY = Summary(

@@ -13,3 +13,4 @@ cryptography
 faker
 aiohttp-socks
 tenacity
+aioredis

@@ -11,7 +11,7 @@ from sqlalchemy import select, func
 
 from bot.services.pools.subacc_trading_strategy import _load_proxy_and_fake
 from src.core.clients.databases.postgres import pg
-from src.core.models.base import Account, DepositAddress
+from src.core.models import Account, DepositAddress
 from src.bot.callbacks import Callbacks
 from src.bot.keyboards.start.start import get_welcome_keyboard
 

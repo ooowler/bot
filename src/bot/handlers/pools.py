@@ -16,7 +16,7 @@ from src.bot.keyboards.start.start import get_welcome_keyboard
 from src.bot.callbacks import Callbacks
 from src.core.clients.databases.postgres import pg
 from src.core.models.pool import Pool, PoolType, PoolAccountLink, PoolStatus
-from src.core.models.base import Account, User, UserAccountLink
+from src.core.models import Account, User, UserAccountLink
 
 pools_router = Router()
 

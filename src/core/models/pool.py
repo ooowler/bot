@@ -12,7 +12,8 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship, Mapped
-from src.core.models.base import Base, Account
+from .base import Base
+from .account import Account
 
 
 class PoolStatus(StrEnum):
