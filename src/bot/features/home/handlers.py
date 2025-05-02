@@ -2,6 +2,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from src.bot.features.home.keyboards import main_menu_keyboard
+from src.core.clients.metrics import metrics
 
 router = Router()
 

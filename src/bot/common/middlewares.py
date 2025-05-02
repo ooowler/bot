@@ -1,13 +1,8 @@
 from aiogram import BaseMiddleware
 from aiogram.fsm.context import FSMContext
-from prometheus_client import Histogram
+import time
+from src.core.clients.metrics import metrics
 from src.bot.features.exchange.states import ExchangeStates
-
-handler_latency = Histogram(
-    "telegram_handler_latency_seconds",
-    "Latency of handler execution",
-    ["handler"],
-)
 
 
 class ExchangeCheckMiddleware(BaseMiddleware):
@@ -21,12 +16,16 @@ class ExchangeCheckMiddleware(BaseMiddleware):
 
 class MetricsMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
-        import time, inspect
+        import time
 
-        start = time.monotonic()
+        start = time.perf_counter()
         result = await handler(event, data)
-        elapsed = time.monotonic() - start
-        handler_latency.labels(handler=data["handler"].callback.__name__).observe(
-            elapsed
-        )
+        elapsed = time.perf_counter() - start
+
+        handler_obj = data.get("handler")
+        callback = getattr(handler_obj, "callback", handler_obj)
+        name = f"handler_{callback.__name__}"
+
+        metrics.record(name, elapsed)
+
         return result
