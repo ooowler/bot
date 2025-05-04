@@ -42,7 +42,7 @@ class Texts:
         FIND = "Найти аккаунт"
         ADD = "Добавить аккаунт"
         DELETE = "Удалить аккаунт"
-        STATS = "Получить статистику по всем аккаунтами"
+        STATS = "Статистика по аккаунтам"
         BALANCE = "Получить баланс"
         ORDER = "Выполнить ордер"
 
@@ -51,6 +51,8 @@ class Texts:
 
     class Proxy(StrEnum):
         HOME = "Прокси"
+        STATS = "Статистика по прокси"
+        DELETE = "Удалить прокси"
 
 
 class Commands:

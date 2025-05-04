@@ -1,8 +1,15 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
+from src.bot.triggers import Texts
 
 
-def proxy_keyboard(proxies: list[str]) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardMarkup()
-    for p in proxies:
-        kb.add(InlineKeyboardButton(text=p, callback_data=f"proxy:{p}"))
-    return kb
+def proxy_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Добавить прокси")],
+            [KeyboardButton(text=Texts.Proxy.STATS)],
+            [KeyboardButton(text=Texts.Proxy.DELETE)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )

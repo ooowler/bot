@@ -2,6 +2,6 @@ from aiogram.fsm.state import StatesGroup, State
 
 
 class ProxyStates(StatesGroup):
-    viewing = State()
     adding = State()
-    deleting = State()
+    deleting_country = State()
+    deleting_amount = State()

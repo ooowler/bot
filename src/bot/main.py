@@ -18,7 +18,11 @@ from src.bot.features.accounts.handlers import (
     accounts_stats_router,
 )
 from src.bot.features.pools import router as pools_router
-from src.bot.features.proxy import router as proxy_router
+from src.bot.features.proxy.handlers import (
+    proxy_add_router,
+    proxy_stats_router,
+    proxy_delete_router,
+)
 
 load_dotenv()
 
@@ -47,7 +51,9 @@ async def main():
     dp.include_router(accounts_balance_router)
     dp.include_router(accounts_stats_router)
     dp.include_router(pools_router)
-    dp.include_router(proxy_router)
+    dp.include_router(proxy_add_router)
+    dp.include_router(proxy_stats_router)
+    dp.include_router(proxy_delete_router)
 
     logger.info("Beginning polling")
     await dp.start_polling(bot)
