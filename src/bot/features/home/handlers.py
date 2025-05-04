@@ -1,15 +1,21 @@
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
 from src.bot.features.home.keyboards import main_menu_keyboard
-from src.core.clients.metrics import metrics
 
 router = Router()
 
 
 @router.message(Command("start"))
-async def cmd_start(msg: Message):
+async def cmd_start(msg: Message, state: FSMContext):
     await msg.answer("Добро пожаловать!", reply_markup=main_menu_keyboard())
+
+
+@router.message(Command("refresh"))
+async def cmd_start(msg: Message, state: FSMContext):
+    await state.clear()
+    await msg.answer("Состояния очищены!", reply_markup=main_menu_keyboard())
 
 
 @router.message(Command("help"))

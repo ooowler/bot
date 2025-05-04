@@ -11,7 +11,11 @@ from src.dev import dev
 from src.bot.common.middlewares import MetricsMiddleware
 from src.bot.features.home import router as home_router
 from src.bot.features.exchange import router as exchange_router
-from src.bot.features.accounts import router as accounts_router
+from src.bot.features.accounts.handlers import (
+    accounts_home_router,
+    accounts_find_router,
+    accounts_balance_router,
+)
 from src.bot.features.pools import router as pools_router
 from src.bot.features.proxy import router as proxy_router
 
@@ -37,7 +41,9 @@ async def main():
 
     dp.include_router(home_router)
     dp.include_router(exchange_router)
-    dp.include_router(accounts_router)
+    dp.include_router(accounts_home_router)
+    dp.include_router(accounts_find_router)
+    dp.include_router(accounts_balance_router)
     dp.include_router(pools_router)
     dp.include_router(proxy_router)
 

@@ -1,8 +1,10 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from src.constants import Exchanges
 
 
-def exchange_keyboard(exchanges: list[str]):
+def exchange_keyboard():
     builder = InlineKeyboardBuilder()
-    for name in exchanges:
-        builder.button(text=name, callback_data=f"exchange:{name}")
+    for exchange in Exchanges:
+        name = exchange.value
+        builder.button(text=name, callback_data=f"exchange={name}")
     return builder.as_markup()

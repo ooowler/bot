@@ -2,5 +2,4 @@ from aiogram.fsm.state import StatesGroup, State
 
 
 class AccountsStates(StatesGroup):
-    creating = State()
-    deleting = State()
+    waiting_api_key_or_name = State()

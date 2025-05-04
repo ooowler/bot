@@ -11,6 +11,10 @@ from aiohttp import ClientTimeout, ClientSession
 from aiohttp.client_exceptions import ServerDisconnectedError, ClientConnectorError
 from loguru import logger
 from sqlalchemy import select, update
+from src.core.clients.exchanges.backpack.schemas import (
+    BalancesResponse,
+    BorrowLendPositionsResponse,
+)
 from src.core.models import Account, Proxy
 from src.core.clients.databases.postgres import pg
 from prometheus_client import Summary
@@ -50,12 +54,12 @@ REQUEST_COUNT = Counter(
 class BackpackExchangeClient:
     def __init__(
         self,
-        base_url: str,
         api_key: str,
         api_secret: str,
         proxy_url: Optional[str] = None,
         fake_headers: Optional[dict] = None,
         cookies: Optional[dict] = None,
+        base_url: str = "https://api.backpack.exchange/",
     ):
         self.base_url = base_url
         self.api_key = api_key
@@ -213,22 +217,22 @@ class BackpackExchangeClient:
             )
             return {"error": "proxy_failure", "message": str(e)}
 
-    async def get_balance(self) -> dict:
+    async def get_balance(self) -> BalancesResponse:
         response = await self._send_request(
             method="GET",
             endpoint="api/v1/capital",
             instruction="balanceQuery",
         )
-        return response
+        return BalancesResponse(balances=response)
 
-    async def get_borrow_lend_positions(self) -> dict:
+    async def get_borrow_lend_positions(self) -> BorrowLendPositionsResponse:
         "https://api.backpack.exchange/api/v1/borrowLend/positions"
         response = await self._send_request(
             method="GET",
             endpoint="api/v1/borrowLend/positions",
             instruction="borrowLendPositionQuery",
         )
-        return response
+        return BorrowLendPositionsResponse(positions=response)
 
     async def request_withdrawal(
         self,
