@@ -15,6 +15,7 @@ from src.bot.features.accounts.handlers import (
     accounts_home_router,
     accounts_find_router,
     accounts_balance_router,
+    accounts_stats_router,
 )
 from src.bot.features.pools import router as pools_router
 from src.bot.features.proxy import router as proxy_router
@@ -44,6 +45,7 @@ async def main():
     dp.include_router(accounts_home_router)
     dp.include_router(accounts_find_router)
     dp.include_router(accounts_balance_router)
+    dp.include_router(accounts_stats_router)
     dp.include_router(pools_router)
     dp.include_router(proxy_router)
 

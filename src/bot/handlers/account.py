@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from loguru import logger
 from sqlalchemy.exc import IntegrityError
 from src.core.clients.databases.postgres import pg
-from src.bot.callbacks import Callbacks
+from src.bot.triggers import Callbacks
 from src.bot.keyboards.exchanges.exchanges import (
     get_exchanges_keyboard,
     get_exchanges_actions_keyboard,

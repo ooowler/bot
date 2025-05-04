@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from src.core.clients.databases.postgres import pg
-from src.bot.callbacks import Callbacks
+from src.bot.triggers import Callbacks
 from src.bot.keyboards.start.start import get_welcome_keyboard
 
 info_router = Router()

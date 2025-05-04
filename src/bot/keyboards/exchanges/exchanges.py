@@ -1,5 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from src.bot.callbacks import Callbacks
+from src.bot.triggers import Callbacks
 
 
 def get_exchanges_keyboard():

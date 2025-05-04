@@ -34,3 +34,27 @@ class Callbacks:
     class Exchanges(StrEnum):
         SELECT = "exchanges_select"
         BACKPACK = "exchanges_backpack"
+
+
+class Texts:
+    class Accounts(StrEnum):
+        HOME = "Аккаунты"
+        FIND = "Найти аккаунт"
+        ADD = "Добавить аккаунт"
+        DELETE = "Удалить аккаунт"
+        STATS = "Получить статистику по всем аккаунтами"
+        BALANCE = "Получить баланс"
+        ORDER = "Выполнить ордер"
+
+    class Pools(StrEnum):
+        HOME = "Пулы"
+
+    class Proxy(StrEnum):
+        HOME = "Прокси"
+
+
+class Commands:
+    class Home(StrEnum):
+        START = "start"
+        REFRESH = "refresh"
+        HELP = "help"

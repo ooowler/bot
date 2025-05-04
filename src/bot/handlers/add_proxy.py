@@ -15,7 +15,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
 
-from src.bot.callbacks import Callbacks
+from src.bot.triggers import Callbacks
 from src.bot.keyboards.start.start import get_welcome_keyboard
 from src.core.clients.databases.postgres import pg
 from src.core.models import Proxy

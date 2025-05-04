@@ -1,34 +1,17 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from src.bot.triggers import Texts
 
-from src.bot.callbacks import Callbacks
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 
-def main_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
             [
-                InlineKeyboardButton(
-                    text="Выбрать биржу",
-                    callback_data=Callbacks.Exchanges.SELECT,
-                )
+                KeyboardButton(text=Texts.Accounts.HOME),
+                KeyboardButton(text=Texts.Pools.HOME),
+                KeyboardButton(text=Texts.Proxy.HOME),
             ],
-            [
-                InlineKeyboardButton(
-                    text="Аккаунты",
-                    callback_data=Callbacks.Accounts.HOME,
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Пулы",
-                    callback_data=Callbacks.Pools.HOME,
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Прокси",
-                    callback_data=Callbacks.Proxy.HOME,
-                )
-            ],
-        ]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False,
     )

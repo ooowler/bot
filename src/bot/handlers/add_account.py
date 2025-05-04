@@ -11,7 +11,7 @@ from faker import Faker
 from loguru import logger
 from sqlalchemy import select, update
 
-from src.bot.callbacks import Callbacks
+from src.bot.triggers import Callbacks
 from src.bot.keyboards.start.start import get_welcome_keyboard
 from src.core.clients.databases.postgres import pg
 from src.core.models import (
