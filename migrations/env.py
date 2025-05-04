@@ -1,13 +1,15 @@
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine.url import URL
 from alembic import context
-from dotenv import load_dotenv
 from src.core.models import Base
 from src.core.clients.databases.postgres import PostgresClient
 
-load_dotenv()
 
 config = context.config
 if config.config_file_name is not None:

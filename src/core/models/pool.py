@@ -46,12 +46,17 @@ class Pool(Base):
 
 class PoolAccountLink(Base):
     __tablename__ = "pool_account_link"
-    __table_args__ = (UniqueConstraint("pool_id", "account_id"),)
+    __table_args__ = (
+        UniqueConstraint("pool_id", "account_id", name="uq_pool_account"),
+    )
 
-    id: Mapped[int] = Column(Integer, primary_key=True)
-    pool_id: Mapped[int] = Column(Integer, ForeignKey("pools.id"), nullable=False)
-    account_id: Mapped[int] = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    id = Column(Integer, primary_key=True)
+    pool_id = Column(
+        Integer, ForeignKey("pools.id", ondelete="CASCADE"), nullable=False
+    )
+    account_id = Column(
+        Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
 
-    # backrefs
-    pool: Mapped["Pool"] = relationship(back_populates="accounts")
-    account: Mapped[Account] = relationship()
+    pool = relationship("Pool")
+    account = relationship("Account")

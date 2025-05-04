@@ -41,6 +41,7 @@ class Texts:
         HOME = "Аккаунты"
         FIND = "Найти аккаунт"
         ADD = "Добавить аккаунт"
+        ADD_CSV = "Добавить аккаунты через csv"
         DELETE = "Удалить аккаунт"
         STATS = "Статистика по аккаунтам"
         BALANCE = "Получить баланс"
@@ -53,6 +54,9 @@ class Texts:
         HOME = "Прокси"
         STATS = "Статистика по прокси"
         DELETE = "Удалить прокси"
+
+    class Friends(StrEnum):
+        ADD = "Добавить друга"
 
 
 class Commands:

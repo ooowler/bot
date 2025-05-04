@@ -5,15 +5,14 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     Integer,
+    BigInteger,
     String,
     DateTime,
     Boolean,
     ForeignKey,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import ENUM, JSONB
-from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.dialects.postgresql import ENUM, JSONB, JSON
 from sqlalchemy.orm import relationship
 
 
@@ -21,24 +20,40 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id = Column(Integer, primary_key=True)
-    parent_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    owner_tid = Column(BigInteger, nullable=False, index=True)
+    parent_id = Column(
+        Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
+    )
 
     name = Column(String, nullable=False)
     exchange = Column(String, nullable=False, default="backpack")
     api_key = Column(String, nullable=False)
     api_secret = Column(String, nullable=False)
     country = Column(String)
-    wallet = Column(String)
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    # self‑relation for sub‑accounts
-    parent = relationship("Account", remote_side=[id], back_populates="children")
-    children = relationship("Account", back_populates="parent")
+    parent = relationship("Account", remote_side=[id], backref="sub_accounts")
 
-    deposit_addresses = relationship("DepositAddress", back_populates="account")
-    users = relationship("UserAccountLink", back_populates="account")
+    deposit_addresses = relationship(
+        "DepositAddress", back_populates="account", cascade="all, delete-orphan"
+    )
+
+    proxy = relationship(
+        "Proxy", back_populates="account", uselist=False, cascade="all, delete-orphan"
+    )
+
+    fake_header = relationship(
+        "FakeHeader",
+        back_populates="account",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    users = relationship(
+        "UserAccountLink", back_populates="account", cascade="all, delete-orphan"
+    )
 
     @property
     def is_sub(self) -> bool:
@@ -59,7 +74,7 @@ class Proxy(Base):
     in_use = Column(Boolean, default=False, nullable=False)
     fails = Column(Integer, default=0, nullable=False)
 
-    account = relationship("Account", backref="proxy", uselist=False)
+    account = relationship("Account", back_populates="proxy", uselist=False)
 
 
 class FakeHeader(Base):
@@ -72,7 +87,7 @@ class FakeHeader(Base):
     headers = Column(JSON, nullable=False)
     cookies = Column(JSON, nullable=False)
 
-    account = relationship("Account", backref="fake_header", uselist=False)
+    account = relationship("Account", back_populates="fake_header", uselist=False)
 
 
 class DepositAddress(Base):

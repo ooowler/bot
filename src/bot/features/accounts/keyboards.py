@@ -8,6 +8,7 @@ def accounts_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=Texts.Accounts.FIND)],
             [KeyboardButton(text=Texts.Accounts.ADD)],
+            [KeyboardButton(text=Texts.Accounts.ADD_CSV)],
             [KeyboardButton(text=Texts.Accounts.DELETE)],
             [KeyboardButton(text=Texts.Accounts.STATS)],
         ],

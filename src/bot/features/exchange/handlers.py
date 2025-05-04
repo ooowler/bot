@@ -24,10 +24,9 @@ async def choose_exchange(message: Message, state: FSMContext):
         return
 
     await state.set_state(ExchangeStates.selected)
+    await state.update_data(exchange=name)
 
     await message.answer(f"Биржа {name} выбрана ✅", reply_markup=accounts_keyboard())
-
-    await state.clear()
 
 
 @router.message(F.text == Texts.Accounts.HOME)
