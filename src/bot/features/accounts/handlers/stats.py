@@ -5,6 +5,7 @@ from src.bot.triggers import Texts
 from src.bot.features.accounts.keyboards import accounts_keyboard
 from src.core.clients.databases.postgres import pg
 from src.core.models import Account, UserFriend
+from sqlalchemy.orm import aliased
 
 router = Router()
 
@@ -14,25 +15,18 @@ async def accounts_stats(message: Message):
     my_tid = message.from_user.id  # ваш Telegram‑ID
 
     async with pg.session_maker() as session:
-        friend_ids_subq = select(UserFriend.friend_id).where(
-            UserFriend.user_id == literal(my_tid, type_=BigInteger)
-        )
+        UF = aliased(UserFriend)
 
-        allowed_ids_subq = friend_ids_subq.union_all(
-            select(literal(my_tid, type_=BigInteger))
-        ).subquery()
-
-        accounts = (
-            (
-                await session.execute(
-                    select(Account).where(
-                        Account.owner_tid.in_(select(allowed_ids_subq))
-                    )
-                )
+        stmt = (
+            select(Account)
+            .join(
+                UF,
+                (UF.user_id == my_tid) & (UF.friend_id == Account.owner_tid),
+                isouter=True,
             )
-            .scalars()
-            .all()
+            .where((Account.owner_tid == my_tid) | (UF.user_id.is_not(None)))
         )
+        accounts = (await session.execute(stmt)).scalars().all()
 
     total = len(accounts)
     subs = sum(1 for a in accounts if a.parent_id)
