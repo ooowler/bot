@@ -1,15 +1,14 @@
-from aiogram import Router, F
-from aiogram.types import Message
-from aiogram.fsm.context import FSMContext
-from sqlalchemy import select
-
-from src.bot.triggers import Texts
-from src.bot.features.accounts.keyboards import accounts_actions_keyboard
-from src.core.clients.databases.postgres import pg
-from src.core.models import Account
-from src.core.clients.exchanges.backpack.backpack import BackpackExchangeClient
-from src.bot.features.accounts.states import AccountsStates
+from aiogram import F, Router
 from aiogram.filters import StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message
+from loguru import logger
+
+from src.bot.features.accounts.keyboards import accounts_actions_keyboard
+from src.bot.features.accounts.states import AccountsStates
+from src.bot.triggers import Texts
+from src.core.clients.exchanges.backpack.backpack import BackpackExchangeClient
+from src.core.repositories import accounts as accounts_repo
 
 router = Router()
 
@@ -17,65 +16,71 @@ router = Router()
 @router.message(
     F.text == Texts.Accounts.BALANCE, StateFilter(AccountsStates.account_selected)
 )
-async def show_balance(message: Message, state: FSMContext):
-    data = await state.get_data()
-    account_id = data.get("account_id")
+async def show_balance(message: Message, state: FSMContext) -> None:
+    account_id: int | None = (await state.get_data()).get("account_id")
+    if account_id is None:
+        await message.answer(
+            "Сначала выберите аккаунт.", reply_markup=accounts_actions_keyboard()
+        )
+        return
 
-    async with pg.session_maker() as session:
-        stmt = select(Account).where(Account.id == account_id)
-        acc = await session.scalar(stmt)
-
+    acc = await accounts_repo.get_by_id(account_id)
     if not acc:
         await message.answer(
-            "Аккаунт не найден", reply_markup=accounts_actions_keyboard()
+            "Аккаунт не найден.", reply_markup=accounts_actions_keyboard()
         )
         return
 
     client = BackpackExchangeClient(api_key=acc.api_key, api_secret=acc.api_secret)
 
+    # ─── Баланс ────────────────────────────────────────────────
     try:
         balances = await client.get_balance()
     except Exception as e:
+        logger.warning(f"Backpack balance error: {e}")
         balances = None
 
+    # ─── Borrow/Lend позиции ──────────────────────────────────
     try:
         lend = await client.get_borrow_lend_positions()
     except Exception as e:
+        logger.warning(f"Backpack lend error: {e}")
         lend = None
 
-    parts = []
+    parts: list[str] = []
 
     if balances is not None:
-        lines = []
-        for idx, (symbol, bal) in enumerate(balances.balances.items(), start=1):
-            parts_list = ", ".join(
-                part
-                for part in (
+        bal_lines: list[str] = []
+        for idx, (symbol, bal) in enumerate(balances.balances.items(), 1):
+            part_text = ", ".join(
+                p
+                for p in (
                     f"available: {bal.available}" if bal.available else None,
                     f"locked: {bal.locked}" if bal.locked else None,
                     f"staked: {bal.staked}" if bal.staked else None,
                 )
-                if part
+                if p
             )
-            if parts_list:
-                lines.append(f"{idx}. <b>{symbol}</b> — {parts_list}")
+            if part_text:
+                bal_lines.append(f"{idx}. <b>{symbol}</b> — {part_text}")
         parts.append("<b>💰 Баланс аккаунта:</b>")
-        parts.extend(lines)
+        parts.extend(bal_lines)
     else:
-        parts.append(f"⚠️ Не удалось получить баланс")
+        parts.append("⚠️ Не удалось получить баланс")
 
-    if lend is not None:
-        lend_lines = []
-        for idx, pos in enumerate(lend.positions, start=1):
-            lend_lines.append(
-                f"{idx}. <b>{pos.symbol}</b> — quantity: {pos.netExposureQuantity}, notional: {pos.netExposureNotional}$"
-            )
-        if lend_lines:
-            parts.append("\n<b>📊 Borrow/Lend позиции:</b>")
-            parts.extend(lend_lines)
-    else:
-        parts.append(f"⚠️ Не удалось получить позиции borrow/lend")
+    if lend is not None and lend.positions:
+        lend_lines = [
+            f"{idx}. <b>{p.symbol}</b> — quantity: {p.netExposureQuantity}, "
+            f"notional: {p.netExposureNotional}$"
+            for idx, p in enumerate(lend.positions, 1)
+        ]
+        parts.append("\n<b>📊 Borrow/Lend позиции:</b>")
+        parts.extend(lend_lines)
+    elif lend is None:
+        parts.append("⚠️ Не удалось получить позиции borrow/lend")
 
     await message.answer(
-        "\n".join(parts), parse_mode="HTML", reply_markup=accounts_actions_keyboard()
+        "\n".join(parts),
+        parse_mode="HTML",
+        reply_markup=accounts_actions_keyboard(),
     )

@@ -35,7 +35,6 @@ from sqlalchemy import select, update
 from prometheus_client import Summary, Counter
 
 from src.core.models import Account, Proxy
-from src.core.clients.databases.postgres import pg
 from decimal import Decimal, ROUND_DOWN
 
 REQUEST_LATENCY = Summary(

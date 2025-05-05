@@ -1,39 +1,40 @@
-from aiogram import Router, F
+# src/bot/features/proxy/handlers/add.py  (новый файл или переименовали)
+from aiogram import F, Router
+from aiogram.filters import StateFilter
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    Message,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    Message,
 )
-from aiogram.filters import StateFilter
-from aiogram.fsm.context import FSMContext
 import os
 import socket
 
-from src.bot.triggers import Texts
 from src.bot.features.proxy.keyboards import proxy_menu_keyboard
 from src.bot.features.proxy.states import ProxyStates
-from src.core.clients.databases.postgres import pg
-from src.core.models import Proxy
+from src.bot.triggers import Texts
+from src.core.repositories import proxy as proxy_repo
 
 router = Router()
 
 
+# ─────────────────────────── helpers ────────────────────────────
 def parse_proxy_file(path: str) -> list[str]:
     with open(path, encoding="utf-8") as f:
         return [line.strip() for line in f if line.strip()]
 
 
-def resolve_proxies(lines: list[str]) -> tuple[list[str], str, str]:
-    host_cache = {}
-    resolved = []
+def resolve_proxies(lines: list[str]) -> tuple[list[str], str, list[str]]:
+    host_cache: dict[str, str] = {}
+    resolved: list[str] = []
     first_old = first_new = None
+
     for raw in lines:
         parts = raw.split(":")
         host = parts[0]
-        if host in host_cache:
-            ip = host_cache[host]
-        else:
+        ip = host_cache.get(host)
+        if ip is None:
             try:
                 ip = socket.gethostbyname(host)
             except socket.gaierror:
@@ -43,11 +44,12 @@ def resolve_proxies(lines: list[str]) -> tuple[list[str], str, str]:
             first_old, first_new = host, ip
         parts[0] = ip
         resolved.append(":".join(parts))
+
     mapping = f"{first_old} -> {first_new}" if first_old != first_new else first_old
     return resolved, mapping, resolved[0].split(":")
 
 
-def get_confirmation_markup() -> InlineKeyboardMarkup:
+def confirmation_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да", callback_data="proxy_confirm")],
@@ -56,81 +58,72 @@ def get_confirmation_markup() -> InlineKeyboardMarkup:
     )
 
 
-def save_proxies_to_db(proxies: list[str], country: str) -> list[Proxy]:
-    objs = []
-    for raw in proxies:
-        parts = raw.split(":")
-        if len(parts) != 4:
-            continue
-        host, port, login, password = parts
-        objs.append(
-            Proxy(
-                ip=host, port=int(port), login=login, password=password, country=country
-            )
-        )
-
-    async def _save(session):
-        session.add_all(objs)
-        await session.commit()
-
-    return objs, _save
-
-
+# ─────────────────────────── меню ───────────────────────────────
 @router.message(F.text == Texts.Proxy.HOME.value)
-async def proxy_menu(message: Message):
+async def proxy_menu(message: Message) -> None:
     await message.answer("Меню прокси", reply_markup=proxy_menu_keyboard())
 
 
+# ─────────────────────────── шаг 0 ──────────────────────────────
 @router.message(F.text == "Добавить прокси")
-async def proxy_add_start(message: Message, state: FSMContext):
+async def proxy_add_start(message: Message, state: FSMContext) -> None:
     await state.set_state(ProxyStates.adding)
     await message.answer("Пришлите файл .txt с прокси, затем укажите страну")
 
 
+# ─────────────────────────── шаг 1: файл ───────────────────────
 @router.message(StateFilter(ProxyStates.adding), F.document)
-async def proxy_file(message: Message, state: FSMContext):
+async def proxy_file(message: Message, state: FSMContext) -> None:
     path = f"/tmp/{message.document.file_unique_id}.txt"
     await message.bot.download(message.document, destination=path)
+
     try:
         lines = parse_proxy_file(path)
     finally:
         os.remove(path)
+
     if not lines:
         await message.answer(
             "Файл пуст или неверный формат", reply_markup=proxy_menu_keyboard()
         )
         await state.clear()
         return
-    first = lines[0].split(":")
-    if len(first) != 4:
+
+    if len(lines[0].split(":")) != 4:
         await message.answer(
             "Неверный формат первой строки", reply_markup=proxy_menu_keyboard()
         )
         await state.clear()
         return
+
     await state.update_data(proxies=lines)
     await message.answer("Теперь укажите страну для этих прокси")
 
 
+# ─────────────────────────── шаг 2: страна ─────────────────────
 @router.message(StateFilter(ProxyStates.adding), F.text)
-async def proxy_country(message: Message, state: FSMContext):
-    country = message.text.strip()
+async def proxy_country(message: Message, state: FSMContext) -> None:
+    country: str = message.text.strip()
     data = await state.get_data()
+
     resolved, mapping, first_parts = resolve_proxies(data["proxies"])
     await state.update_data(proxies=resolved, country=country)
+
     ip, port, login, password = first_parts
     await message.answer(
-        f"Проверьте первую строку прокси:\nHost: {mapping}\nPort: {port}\nLogin: {login}\nPassword: {password}\nCountry: {country}\nВсего записей: {len(resolved)}",
-        reply_markup=get_confirmation_markup(),
+        f"Проверьте первую строку прокси:\n"
+        f"Host: {mapping}\nPort: {port}\nLogin: {login}\nPassword: {password}\n"
+        f"Country: {country}\nВсего записей: {len(resolved)}",
+        reply_markup=confirmation_kb(),
     )
 
 
+# ─────────────────────────── шаг 3: подтверждение ───────────────
 @router.callback_query(StateFilter(ProxyStates.adding), F.data == "proxy_confirm")
-async def proxy_confirm(cb: CallbackQuery, state: FSMContext):
+async def proxy_confirm(cb: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
-    objs, saver = save_proxies_to_db(data["proxies"], data["country"])
-    async with pg.session_maker() as session:
-        await saver(session)
+    objs = await proxy_repo.add_proxies(data["proxies"], data["country"])
+
     await cb.message.answer(
         f"Добавлено прокси: {len(objs)}", reply_markup=proxy_menu_keyboard()
     )
@@ -138,7 +131,7 @@ async def proxy_confirm(cb: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(StateFilter(ProxyStates.adding), F.data == "proxy_cancel")
-async def proxy_cancel(cb: CallbackQuery, state: FSMContext):
+async def proxy_cancel(cb: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await cb.message.answer(
         "Добавление прокси отменено", reply_markup=proxy_menu_keyboard()

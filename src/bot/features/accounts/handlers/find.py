@@ -1,39 +1,30 @@
-from aiogram import Router, F
-from aiogram.types import Message
+from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from sqlalchemy import select, or_
+from aiogram.types import Message
 
 from src.bot.features.accounts.keyboards import (
-    accounts_keyboard,
     accounts_actions_keyboard,
+    accounts_keyboard,
 )
-from src.bot.triggers import Texts
 from src.bot.features.accounts.states import AccountsStates
-from src.core.clients.databases.postgres import pg
-from src.core.models import Account
+from src.bot.triggers import Texts
+from src.core.repositories import accounts as accounts_repo
 
 router = Router()
 
 
 @router.message(F.text == Texts.Accounts.FIND)
-async def ask_api_key(message: Message, state: FSMContext):
+async def ask_api_key(message: Message, state: FSMContext) -> None:
     await state.set_state(AccountsStates.waiting_api_key_or_name)
-    await message.answer(
-        "Пришлите публичный API-ключ аккаунта или его название:",
-    )
+    await message.answer("Пришлите публичный API‑ключ аккаунта или его название:")
 
 
 @router.message(StateFilter(AccountsStates.waiting_api_key_or_name))
-async def show_account_info(message: Message, state: FSMContext):
+async def show_account_info(message: Message, state: FSMContext) -> None:
     key_or_name = message.text.strip()
 
-    async with pg.session_maker() as session:
-        stmt = select(Account).where(
-            or_(Account.api_key == key_or_name, Account.name == key_or_name)
-        )
-        account = await session.scalar(stmt)
-
+    account = await accounts_repo.get_by_api_or_name(key_or_name)
     if not account:
         await message.answer("Аккаунт не найден.", reply_markup=accounts_keyboard())
         return

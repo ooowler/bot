@@ -12,8 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped
 
 
 class User(Base):
@@ -71,6 +70,8 @@ class UserFriend(Base):
         ForeignKey("users.telegram_id", ondelete="CASCADE"),
         primary_key=True,
     )
+
+    confirmed: Mapped[bool] = Column(Boolean, default=False)
 
     user = relationship("User", foreign_keys=[user_id], back_populates="friends")
     friend = relationship("User", foreign_keys=[friend_id])

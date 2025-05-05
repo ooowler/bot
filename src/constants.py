@@ -1,5 +1,7 @@
 from enum import StrEnum
 
+METRICS_DB_PREFIX = "db_"
+
 
 class Exchanges(StrEnum):
     BACKPACK = "backpack"

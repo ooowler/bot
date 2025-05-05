@@ -1,23 +1,26 @@
 import csv
 import os
-from aiogram import Router, F
-from aiogram.types import Message
+import random
+from faker import Faker
+from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from faker import Faker
-from sqlalchemy import select
+from aiogram.types import Message
+from loguru import logger
 
-from src.bot.triggers import Texts
 from src.bot.features.accounts.keyboards import accounts_keyboard
 from src.bot.features.accounts.states import AccountsStates
-from src.core.clients.databases.postgres import pg
-from src.core.models import Account, FakeHeader, Proxy, DepositAddress, Chain
+from src.bot.triggers import Texts
+from src.core.models import Account, FakeHeader, DepositAddress, Chain
+from src.core.repositories import accounts as accounts_repo
+from src.exceptions import NoFreeProxy
+from src.core.repositories.accounts import ParentAccountNotFound
 
 router = Router()
 _fake = Faker()
 
 
-def _gen_headers() -> dict:
+def _gen_headers() -> dict[str, str]:
     return {
         "User-Agent": _fake.user_agent(),
         "Accept": "application/json",
@@ -27,7 +30,7 @@ def _gen_headers() -> dict:
     }
 
 
-def _gen_cookies() -> dict:
+def _gen_cookies() -> dict[str, str]:
     names = ["sessionid", "csrftoken", "auth_token", "userid", "tracking", "cartid"]
     return {
         n: _fake.uuid4()
@@ -35,104 +38,89 @@ def _gen_cookies() -> dict:
     }
 
 
+# ───────── старт импорта ─────────
 @router.message(F.text == Texts.Accounts.ADD_CSV)
-async def import_start(message: Message, state: FSMContext):
+async def import_start(message: Message, state: FSMContext) -> None:
     await state.set_state(AccountsStates.import_csv)
     await message.answer(
-        "Пришлите CSV-файл с аккаунтами (столбцы NAME,API_KEY,API_SECRET,COUNTRY,SOL_DEPOSIT_ADDRESS,PARENT):",
+        "Пришлите CSV‑файл (NAME,API_KEY,API_SECRET,COUNTRY,SOL_DEPOSIT_ADDRESS,PARENT):",
         reply_markup=accounts_keyboard(),
     )
 
 
+# ───────── приём файла ─────────
 @router.message(StateFilter(AccountsStates.import_csv), F.document)
-async def import_csv(message: Message, state: FSMContext):
+async def import_csv(message: Message, state: FSMContext) -> None:
     file = message.document
     if not file.file_name.lower().endswith(".csv"):
         await message.answer(
-            "Неверный формат файла, прикрепите CSV.", reply_markup=accounts_keyboard()
+            "Неверный формат файла, нужен CSV.", reply_markup=accounts_keyboard()
         )
         return
 
-    user_id = message.from_user.id
-    data = await state.get_data()
-    exchange = data["exchange"]
+    exchange = (await state.get_data())["exchange"]
     path = f"/tmp/{file.file_unique_id}.csv"
     await message.bot.download(file, destination=path)
-    successes, failures = [], []
+
+    successes: list[str] = []
+    failures: list[str] = []
+
     try:
         with open(path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             reader.fieldnames = [h.strip().upper() for h in reader.fieldnames]
-            for idx, row in enumerate(reader, start=1):
-                try:
-                    data = {k.strip().upper(): v.strip() for k, v in row.items()}
-                    name = data["NAME"]
-                    api_key = data["API_KEY"]
-                    api_secret = data["API_SECRET"]
-                    country = data["COUNTRY"]
-                    deposit_address = data["SOL_DEPOSIT_ADDRESS"]
-                    parent_ident = data.get("PARENT") or None
-                    headers = _gen_headers()
-                    cookies = _gen_cookies()
-                    async with pg.session_maker() as session:
-                        parent_id = None
-                        if parent_ident:
-                            stmt = select(Account).where(
-                                (Account.api_key == parent_ident)
-                                | (Account.name == parent_ident)
-                            )
-                            parent = await session.scalar(stmt)
-                            if not parent:
-                                raise ValueError(f"Parent '{parent_ident}' not found")
-                            parent_id = parent.id
-                        account = Account(
-                            name=name,
-                            api_key=api_key,
-                            api_secret=api_secret,
-                            exchange=exchange,
-                            country=country,
-                            parent_id=parent_id,
-                            owner_tid=int(user_id),
-                        )
-                        session.add(account)
-                        await session.flush()
-                        session.add(
-                            FakeHeader(
-                                account_id=account.id, headers=headers, cookies=cookies
-                            )
-                        )
-                        proxy = await session.scalar(
-                            select(Proxy)
-                            .where(Proxy.country == country, Proxy.in_use.is_(False))
-                            .limit(1)
-                        )
-                        if not proxy:
-                            raise ValueError(f"No free proxy for {country}")
-                        proxy.account_id = account.id
-                        proxy.in_use = True
-                        session.add(
-                            DepositAddress(
-                                account_id=account.id,
-                                chain=Chain.SOLANA,
-                                address=deposit_address,
-                            )
-                        )
-                        await session.commit()
-                    successes.append(idx)
-                except Exception as e:
-                    from loguru import logger
 
-                    logger.info(f"e: {e}")
-                    failures.append(name or "")
+            for idx, row in enumerate(reader, 1):
+                name = row.get("NAME", "").strip()
+                try:
+                    api_key = row["API_KEY"].strip()
+                    api_secret = row["API_SECRET"].strip()
+                    country = row["COUNTRY"].strip()
+                    deposit_address = row["SOL_DEPOSIT_ADDRESS"].strip()
+                    parent_ident = row.get("PARENT", "").strip() or None
+
+                    parent_id = None
+                    if parent_ident:
+                        parent_id = await accounts_repo.get_parent_id(parent_ident)
+
+                    # формируем объекты
+                    account = Account(
+                        name=name,
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        exchange=exchange,
+                        country=country,
+                        parent_id=parent_id,
+                        owner_tid=message.from_user.id,
+                    )
+                    fake_header = FakeHeader(
+                        headers=_gen_headers(), cookies=_gen_cookies()
+                    )
+                    deposit = DepositAddress(
+                        chain=Chain.SOLANA, address=deposit_address
+                    )
+
+                    await accounts_repo.add_account_full(
+                        account=account,
+                        fake_header=fake_header,
+                        deposit=deposit,
+                    )
+                    successes.append(name)
+                except (NoFreeProxy, ParentAccountNotFound, KeyError, ValueError) as e:
+                    logger.warning(f"row {idx} failed: {e}")
+                    failures.append(name or f"row#{idx}")
     finally:
         os.remove(path)
-    report = f"Импорт завершён. Успешно: {len(successes)}, Ошибок: {len(failures)}"
+
+    report = (
+        f"Импорт завершён.\n"
+        f"✅ Успешно: {len(successes)}\n"
+        f"❌ Ошибок: {len(failures)}"
+    )
     if failures:
-        failed_list = "\n".join(f"`{name}`" for name in failures)
-        report = f"{report}\n" f"Не удалось добавить аккаунты:\n" f"{failed_list}"
+        report += "\nНе удалось загрузить:\n" + "\n".join(f"`{n}`" for n in failures)
+
     await message.answer(
         report, reply_markup=accounts_keyboard(), parse_mode="Markdown"
     )
-
     await state.clear()
-    await state.update_data(exchange=exchange)
