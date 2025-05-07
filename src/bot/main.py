@@ -19,6 +19,8 @@ from src.bot.features.accounts.handlers import (
     accounts_add_router,
     accounts_add_csv_router,
     accounts_delete_router,
+    accounts_order_market_router,
+    accounts_transfer_router,
 )
 from src.bot.features.pools import router as pools_router
 from src.bot.features.friends import router as friends_router
@@ -57,6 +59,8 @@ async def main():
     dp.include_router(accounts_add_router)
     dp.include_router(accounts_add_csv_router)
     dp.include_router(accounts_delete_router)
+    dp.include_router(accounts_order_market_router)
+    dp.include_router(accounts_transfer_router)
     dp.include_router(pools_router)
     dp.include_router(proxy_add_router)
     dp.include_router(proxy_stats_router)

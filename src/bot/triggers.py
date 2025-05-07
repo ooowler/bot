@@ -46,6 +46,8 @@ class Texts:
         STATS = "Статистика по аккаунтам"
         BALANCE = "Получить баланс"
         ORDER = "Выполнить ордер"
+        MARKET_ORDER = "Маркет-ордер"
+        TRANSFER = "Перевести средства"
 
     class Pools(StrEnum):
         HOME = "Пулы"

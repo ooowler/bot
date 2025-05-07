@@ -21,7 +21,8 @@ def accounts_actions_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=Texts.Accounts.BALANCE)],
-            [KeyboardButton(text=Texts.Accounts.ORDER)],
+            [KeyboardButton(text=Texts.Accounts.MARKET_ORDER)],
+            [KeyboardButton(text=Texts.Accounts.TRANSFER)],
         ],
         resize_keyboard=True,
         one_time_keyboard=True,

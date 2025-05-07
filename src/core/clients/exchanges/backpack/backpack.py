@@ -118,10 +118,16 @@ class BackpackExchangeClient:
                 instruction=instruction or "", method=(method or "").upper()
             ).time():
                 try:
-                    return await send_func(*args)
+                    resp_json = await send_func(*args)
+                    if isinstance(resp_json, dict) and resp_json.get("error"):
+                        raise RuntimeError(f"API error: {resp_json.get('message')}")
+                    return resp_json
                 except (ServerDisconnectedError, ClientConnectorError) as ex:
                     logger.error("Proxy failure on {} {}: {}", method, endpoint, ex)
                     await self.change_proxy()
+                    raise
+                except Exception as ex:
+                    logger.error("Unknown failure on {} {}: {}", method, endpoint, ex)
                     raise
 
     async def _send_request(

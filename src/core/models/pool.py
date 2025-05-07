@@ -1,7 +1,5 @@
-from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
-
 from sqlalchemy import (
     Column,
     Integer,
@@ -10,10 +8,9 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     UniqueConstraint,
+    JSON,
 )
-from sqlalchemy.orm import relationship, Mapped
-from .base import Base
-from .account import Account
+from src.core.models.base import Base
 
 
 class PoolStatus(StrEnum):
@@ -22,26 +19,38 @@ class PoolStatus(StrEnum):
 
 
 class PoolType(StrEnum):
-    """Пока только один тип – «все аккаунты с sub‑акком»."""
-
     SUB_ACC_REQUIRED = "sub_required"
+    MARKET_STRATEGY = "market_strategy"
 
 
 class Pool(Base):
     __tablename__ = "pools"
     __table_args__ = (UniqueConstraint("label", "owner_id", name="uq_pool_owner"),)
 
-    id: Mapped[int] = Column(Integer, primary_key=True)
-    label: Mapped[str] = Column(String, nullable=False)  # имя для пользователя
-    owner_id: Mapped[int] = Column(Integer, ForeignKey("users.id"), nullable=False)
-    pool_type: Mapped[str] = Column(
-        String, nullable=False, default=PoolType.SUB_ACC_REQUIRED
+    id = Column(Integer, primary_key=True)
+    label = Column(String, nullable=False)
+    owner_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
-    is_active: Mapped[bool] = Column(Boolean, default=False)
-    status: Mapped[str] = Column(String, default=PoolStatus.STOPPED)
-    created_at: Mapped[datetime] = Column(DateTime, default=datetime.utcnow)
-
-    accounts: Mapped[list["PoolAccountLink"]] = relationship(back_populates="pool")
+    pool_type = Column(
+        String,
+        nullable=False,
+        default=PoolType.SUB_ACC_REQUIRED.value,
+    )
+    is_active = Column(Boolean, default=False, nullable=False)
+    status = Column(
+        String,
+        default=PoolStatus.STOPPED.value,
+        nullable=False,
+    )
+    settings = Column(
+        JSON,
+        nullable=False,
+        default=lambda: {},
+    )
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 class PoolAccountLink(Base):
@@ -57,6 +66,3 @@ class PoolAccountLink(Base):
     account_id = Column(
         Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
     )
-
-    pool = relationship("Pool")
-    account = relationship("Account")

@@ -5,3 +5,9 @@ from src.bot.features.accounts.handlers.stats import router as accounts_stats_ro
 from src.bot.features.accounts.handlers.add import router as accounts_add_router
 from src.bot.features.accounts.handlers.add_csv import router as accounts_add_csv_router
 from src.bot.features.accounts.handlers.delete import router as accounts_delete_router
+from src.bot.features.accounts.handlers.order_market import (
+    router as accounts_order_market_router,
+)
+from src.bot.features.accounts.handlers.transfer import (
+    router as accounts_transfer_router,
+)

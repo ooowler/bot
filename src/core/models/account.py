@@ -25,7 +25,7 @@ class Account(Base):
         Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
     )
 
-    name = Column(String, nullable=False)
+    name = Column(String, nullable=False, unique=True)
     exchange = Column(String, nullable=False, default="backpack")
     api_key = Column(String, nullable=False)
     api_secret = Column(String, nullable=False)

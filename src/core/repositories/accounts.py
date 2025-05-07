@@ -6,7 +6,7 @@ from src.exceptions import NoFreeProxy, ParentAccountNotFound
 from src.constants import METRICS_DB_PREFIX
 from src.core.clients.databases.postgres import pg
 from src.core.clients.metrics import metrics
-from src.core.models import Account, UserFriend
+from src.core.models import Account, UserFriend, DepositAddress
 
 
 # ───────── базовый выбор аккаунтов ─────────
@@ -16,6 +16,69 @@ async def fetch_accounts(owner_tids: Iterable[int]) -> list[Account]:
     async with pg.session_maker() as s:
         stmt = select(Account).where(Account.owner_tid.in_(owner_tids))
         return list(await s.scalars(stmt))
+
+
+from sqlalchemy import select, or_
+from src.constants import METRICS_DB_PREFIX
+from src.core.clients.databases.postgres import pg
+from src.core.clients.metrics import metrics
+from src.core.models import Account
+
+
+@metrics.track(prefix=METRICS_DB_PREFIX)
+async def get_transfer_targets(
+    owner_tid: int,
+    from_acc_id: int,
+    parent_id: int | None,
+) -> list[Account]:
+    """
+    Возвращает список аккаунтов для перевода:
+     - все sub-аккаунты (parent_id == from_acc_id)
+     - и, если parent_id != None, сам parent (id == parent_id).
+    Только среди owner_tid.
+    """
+    async with pg.session_maker() as s:
+        # строим условие parent == from_acc_id или id == parent_id (если задано)
+        if parent_id is not None:
+            filter_expr = or_(
+                Account.parent_id == from_acc_id,
+                Account.id == parent_id,
+            )
+        else:
+            filter_expr = Account.parent_id == from_acc_id
+
+        stmt = (
+            select(Account)
+            .where(
+                Account.owner_tid == owner_tid,
+                filter_expr,
+            )
+            .order_by(Account.id)
+        )
+        return (await s.scalars(stmt)).all()
+
+
+@metrics.track(prefix=METRICS_DB_PREFIX)
+async def get_by_name(name: str) -> Account | None:
+    """Найти аккаунт по уникальному name."""
+    async with pg.session_maker() as s:
+        stmt = select(Account).where(Account.name == name)
+        return await s.scalar(stmt)
+
+
+@metrics.track(prefix=METRICS_DB_PREFIX)
+async def get_by_id(acc_id: int) -> Account | None:
+    """Вернуть Account без связей."""
+    async with pg.session_maker() as s:
+        return await s.get(Account, acc_id)
+
+
+@metrics.track(prefix=METRICS_DB_PREFIX)
+async def get_deposit_address(acc_id: int) -> DepositAddress | None:
+    """Вернуть первый DepositAddress для аккаунта."""
+    async with pg.session_maker() as s:
+        q = select(DepositAddress).where(DepositAddress.account_id == acc_id).limit(1)
+        return await s.scalar(q)
 
 
 # ───────── confirmed‑друзья ─────────
