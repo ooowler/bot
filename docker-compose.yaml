@@ -20,7 +20,7 @@ services:
       - metrics_data:/app/metrics
     ports:
       - "8000:8000"
-    restart: always
+    restart: on-failure
 
   backpack_worker:
     build:
@@ -32,7 +32,8 @@ services:
       - metrics_data:/app/metrics
     ports:
       - "8001:8001"
-    restart: always
+    restart: on-failure
+    
 
 volumes:
   metrics_data:
