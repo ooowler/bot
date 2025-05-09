@@ -4,20 +4,19 @@ from prometheus_client import start_http_server, Counter, Histogram
 
 
 class PrometheusClient:
-    def __init__(self, port: int = 8000):
+    def __init__(self):
         self.call_count = Counter(
-            "myapp_calls_total",
+            "calls_total",
             "Total number of application calls",
             ["function"],
         )
         self.call_latency = Histogram(
-            "myapp_call_latency_seconds",
+            "call_latency_seconds",
             "Latency of function execution",
             ["function"],
         )
-        self._port = port
 
-    def start(self):
+    def start(self, _port: int):
         start_http_server(self._port)
 
     def record(self, function_name: str, elapsed: float) -> None:

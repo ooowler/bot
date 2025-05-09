@@ -38,7 +38,6 @@ class ArkmExchangeClient:
         self, method: str, request_path: str, body: str
     ) -> Dict[str, str]:
         expires = f"{int(time.time()) + 300}000000"
-        # декодируем секрет и сразу переводим в hex-строку
         hmac_key = base64.b64decode(self.api_secret).hex()
         signature_base = f"{self.api_key}{expires}{method}{request_path}{body}"
         digest = hmac.new(
