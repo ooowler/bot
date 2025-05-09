@@ -61,7 +61,7 @@ async def find_mode_input(message: Message, state: FSMContext) -> None:
 )
 async def find_mode_list(message: Message, state: FSMContext) -> None:
     owner_tid = message.from_user.id
-    accounts = await accounts_repo.fetch_accounts([owner_tid])
+    accounts = await accounts_repo.fetch_accounts([owner_tid], with_friends=True)
     accounts = accounts[:20]
 
     if not accounts:

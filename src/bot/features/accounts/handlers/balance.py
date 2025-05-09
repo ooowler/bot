@@ -3,7 +3,9 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from loguru import logger
+from decimal import Decimal
 
+from aiogram.exceptions import TelegramBadRequest
 from src.bot.features.accounts.keyboards import accounts_actions_keyboard
 from src.bot.features.accounts.states import AccountsStates
 from src.bot.triggers import Texts
@@ -17,70 +19,72 @@ router = Router()
     F.text == Texts.Accounts.BALANCE, StateFilter(AccountsStates.account_selected)
 )
 async def show_balance(message: Message, state: FSMContext) -> None:
-    account_id: int | None = (await state.get_data()).get("account_id")
+    data = await state.get_data()
+    account_id: int | None = data.get("account_id")
     if account_id is None:
-        await message.answer(
-            "Сначала выберите аккаунт.", reply_markup=accounts_actions_keyboard()
+        return await message.answer(
+            "Сначала выберите аккаунт.",
+            reply_markup=accounts_actions_keyboard(),
         )
-        return
 
-    acc = await accounts_repo.get_by_id(account_id)
-    if not acc:
-        await message.answer(
-            "Аккаунт не найден.", reply_markup=accounts_actions_keyboard()
+    client = await accounts_repo.get_backpack_client_by_account_id(account_id)
+    if not client:
+        return await message.answer(
+            "Аккаунт не найден.",
+            reply_markup=accounts_actions_keyboard(),
         )
-        return
 
-    client = BackpackExchangeClient(api_key=acc.api_key, api_secret=acc.api_secret)
-
-    # ─── Баланс ────────────────────────────────────────────────
-    try:
-        balances = await client.get_balance()
-    except Exception as e:
-        logger.warning(f"Backpack balance error: {e}")
-        balances = None
-
-    # ─── Borrow/Lend позиции ──────────────────────────────────
-    try:
-        lend = await client.get_borrow_lend_positions()
-    except Exception as e:
-        logger.warning(f"Backpack lend error: {e}")
-        lend = None
-
-    parts: list[str] = []
-
-    if balances is not None:
-        bal_lines: list[str] = []
-        for idx, (symbol, bal) in enumerate(balances.balances.items(), 1):
-            part_text = ", ".join(
-                p
-                for p in (
-                    f"available: {bal.available}" if bal.available else None,
-                    f"locked: {bal.locked}" if bal.locked else None,
-                    f"staked: {bal.staked}" if bal.staked else None,
-                )
-                if p
-            )
-            if part_text:
-                bal_lines.append(f"{idx}. <b>{symbol}</b> — {part_text}")
-        parts.append("<b>💰 Баланс аккаунта:</b>")
-        parts.extend(bal_lines)
-    else:
-        parts.append("⚠️ Не удалось получить баланс")
-
-    if lend is not None and lend.positions:
-        lend_lines = [
-            f"{idx}. <b>{p.symbol}</b> — quantity: {p.netExposureQuantity}, "
-            f"notional: {p.netExposureNotional}$"
-            for idx, p in enumerate(lend.positions, 1)
-        ]
-        parts.append("\n<b>📊 Borrow/Lend позиции:</b>")
-        parts.extend(lend_lines)
-    elif lend is None:
-        parts.append("⚠️ Не удалось получить позиции borrow/lend")
-
+    # Информируем пользователя
     await message.answer(
-        "\n".join(parts),
+        "🕐 Делаю запрос в биржу…",
+        reply_markup=accounts_actions_keyboard(),
+    )
+
+    # Параллельные запросы
+    try:
+        totals_resp = await client.get_total_token_quantities()
+        tickers_resp = await client.get_tickers()
+    except Exception as e:
+        logger.warning(f"Backpack data error: {e}")
+        return await message.answer(
+            "⚠️ Ошибка при запросе к бирже, попробуйте позже.",
+            reply_markup=accounts_actions_keyboard(),
+        )
+
+    # Собираем цены только для *_USDC пар
+    price_map: dict[str, Decimal] = {
+        t.symbol: Decimal(t.lastPrice)
+        for t in tickers_resp.tickers
+        if t.symbol.endswith("_USDC")
+    }
+    price_map["USDC_USDC"] = Decimal("1")
+
+    # Собираем портфель (symbol, amount, value_usd)
+    portfolio: list[tuple[str, Decimal, Decimal]] = []
+    for symbol, amount in totals_resp.totals.items():
+        pair = f"{symbol}_USDC"
+        price = price_map.get(pair)
+        if price is None:
+            continue
+        value_usd = amount * price
+        portfolio.append((symbol, amount, value_usd))
+
+    # Сортируем по убыванию USD
+    portfolio.sort(key=lambda x: x[2], reverse=True)
+
+    # Формируем итоговый текст
+    if not portfolio:
+        text = "Нет активных токенов для отображения."
+    else:
+        lines = [
+            f"{idx}. <b>{symbol}</b>: {amount} (~{value_usd:.2f} $)"
+            for idx, (symbol, amount, value_usd) in enumerate(portfolio, start=1)
+        ]
+        text = "<b>Баланс и оценка в USD:</b>\n" + "\n".join(lines)
+
+    # Отправляем результат
+    await message.answer(
+        text,
         parse_mode="HTML",
         reply_markup=accounts_actions_keyboard(),
     )

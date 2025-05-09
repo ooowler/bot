@@ -24,7 +24,6 @@ from src.bot.features.accounts.states import (
 )
 from src.bot.triggers import Texts
 from src.core.repositories import accounts as accounts_repo
-from src.core.clients.exchanges.backpack.backpack import BackpackExchangeClient
 
 router = Router()
 
@@ -81,9 +80,7 @@ async def transfer_start(message: Message, state: FSMContext) -> None:
 async def transfer_choose_target(message: Message, state: FSMContext) -> None:
     raw = message.text.strip()
     # сначала по name, потом по api_key/name
-    acc = await accounts_repo.get_by_name(
-        raw
-    ) or await accounts_repo.get_by_api_or_name(raw)
+    acc = await accounts_repo.get_by_api_or_name(raw)
     if not acc:
         await message.answer(
             "Аккаунт не найден. Пожалуйста, выберите из списка.",
@@ -156,13 +153,7 @@ async def transfer_confirm(cb, state: FSMContext) -> None:
         await state.clear()
         return
 
-    # 2) загружаем исходный аккаунт
-    from_acc = await accounts_repo.get_by_id(from_id)
-
-    client = BackpackExchangeClient(
-        api_key=from_acc.api_key,
-        api_secret=from_acc.api_secret,
-    )
+    client = await accounts_repo.get_backpack_client_by_account_id(from_id)
     result = await client.request_withdrawal(
         address=deposit.address,
         blockchain="Solana",
@@ -170,9 +161,7 @@ async def transfer_confirm(cb, state: FSMContext) -> None:
         quantity=amount,
     )
 
-    # 3) выводим результат
     await cb.message.edit_reply_markup(None)
-    await cb.answer("✅ Перевод выполнен", show_alert=True)
     await cb.message.answer(
         "💸 Результат перевода:\n" + _format_result_html(result),
         parse_mode="HTML",

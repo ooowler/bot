@@ -10,6 +10,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
                 KeyboardButton(text=Texts.Accounts.HOME),
                 KeyboardButton(text=Texts.Pools.HOME),
                 KeyboardButton(text=Texts.Proxy.HOME),
+                KeyboardButton(text=Texts.Friends.HOME),
             ],
         ],
         resize_keyboard=True,

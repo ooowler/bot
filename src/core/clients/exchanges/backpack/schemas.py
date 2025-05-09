@@ -58,9 +58,9 @@ class OrderResponseBase(BaseModel):
     id: str
     orderType: str
     quantity: str
-    reduceOnly: bool
+    reduceOnly: bool | None
     relatedOrderId: str | None
-    selfTradePrevention: str
+    selfTradePrevention: str | None
     side: str
     status: str
     symbol: str
@@ -120,3 +120,20 @@ class AccountInfoResponse(BaseModel):
     spotMakerFee: str
     spotTakerFee: str
     triggerOrders: int
+
+
+class Ticker(BaseModel):
+    firstPrice: str
+    high: str
+    lastPrice: str
+    low: str
+    priceChange: str
+    priceChangePercent: str
+    quoteVolume: str
+    symbol: str
+    trades: str
+    volume: str
+
+
+class TickersResponse(BaseModel):
+    tickers: list[Ticker]

@@ -23,6 +23,8 @@ def accounts_actions_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=Texts.Accounts.BALANCE)],
             [KeyboardButton(text=Texts.Accounts.MARKET_ORDER)],
             [KeyboardButton(text=Texts.Accounts.TRANSFER)],
+            [KeyboardButton(text=Texts.Accounts.PROXY_CHECK)],
+            [KeyboardButton(text=Texts.Accounts.PROXY_CHANGE)],
         ],
         resize_keyboard=True,
         one_time_keyboard=True,

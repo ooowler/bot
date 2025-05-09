@@ -24,6 +24,7 @@ class OrderStates(StatesGroup):
     symbol = State()  # ждём ввода торговой пары
     quantity = State()  # ждём ввода количества
     price = State()  # новое состояние для ввода цены лимит-ордера
+    side = State()
 
 
 class LimitOrderStates(StatesGroup):
@@ -31,6 +32,7 @@ class LimitOrderStates(StatesGroup):
     limit_symbol = State()
     limit_quantity = State()
     limit_price = State()
+    limit_side = State()
 
 
 class TransferStates(StatesGroup):

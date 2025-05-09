@@ -9,20 +9,33 @@ from src.core.clients.metrics import metrics
 from src.core.models import Account, UserFriend, DepositAddress
 
 
-# ───────── базовый выбор аккаунтов ─────────
-@metrics.track(prefix=METRICS_DB_PREFIX)
-async def fetch_accounts(owner_tids: Iterable[int]) -> list[Account]:
-    """Все аккаунты, у которых owner_tid ∈ owner_tids."""
-    async with pg.session_maker() as s:
-        stmt = select(Account).where(Account.owner_tid.in_(owner_tids))
-        return list(await s.scalars(stmt))
-
-
 from sqlalchemy import select, or_
 from src.constants import METRICS_DB_PREFIX
 from src.core.clients.databases.postgres import pg
 from src.core.clients.metrics import metrics
 from src.core.models import Account
+from typing import Optional, Tuple, Dict
+from sqlalchemy import select
+from src.core.models import Proxy, FakeHeader, Account
+from src.core.clients.databases.postgres import pg
+from src.core.clients.exchanges.backpack.backpack import BackpackExchangeClient
+from loguru import logger
+
+
+@metrics.track(prefix=METRICS_DB_PREFIX)
+async def fetch_accounts(
+    owner_tids: list[int], with_friends: bool = False
+) -> list[Account]:
+    if with_friends:
+        my_tid = owner_tids[0]
+        friends = await confirmed_friends_with_username(my_tid)
+
+        for tid, _ in friends:
+            owner_tids.append(tid)
+
+    async with pg.session_maker() as s:
+        stmt = select(Account).where(Account.owner_tid.in_(owner_tids))
+        return list(await s.scalars(stmt))
 
 
 @metrics.track(prefix=METRICS_DB_PREFIX)
@@ -84,7 +97,6 @@ async def get_deposit_address(acc_id: int) -> DepositAddress | None:
 # ───────── confirmed‑друзья ─────────
 @metrics.track(prefix=METRICS_DB_PREFIX)
 async def confirmed_friend_ids(user_tid: int) -> list[int]:
-    """ID всех подтверждённых друзей пользователя."""
     async with pg.session_maker() as s:
         return list(
             await s.scalars(
@@ -199,3 +211,52 @@ async def get_parent_id(ident: str) -> int:
     if parent is None:
         raise ParentAccountNotFound(ident)
     return parent.id
+
+
+@metrics.track(prefix=METRICS_DB_PREFIX)
+async def get_backpack_client_by_account_id(
+    account_id: int,
+) -> Optional[BackpackExchangeClient]:
+    """
+    Загружает аккаунт, активный прокси, fake headers и cookies для account_id и
+    возвращает настроенный клиент BackpackExchangeClient.
+    Если аккаунт не найден — возвращает None.
+    """
+    # получаем аккаунт
+    async with pg.session_maker() as session:
+        account = await session.scalar(select(Account).where(Account.id == account_id))
+        if not account:
+            logger.warning("Account %s not found", account_id)
+            return None
+
+        # proxy
+        proxy_obj = await session.scalar(
+            select(Proxy).where(
+                Proxy.account_id == account_id,
+                Proxy.in_use.is_(True),
+            )
+        )
+        proxy_url = None
+        if proxy_obj:
+            proxy_url = (
+                f"socks5://{proxy_obj.login}:{proxy_obj.password}@"
+                f"{proxy_obj.ip}:{proxy_obj.port}"
+            )
+            logger.debug("Using proxy_url %s for account %s", proxy_url, account_id)
+
+        # fake headers / cookies
+        fake_obj = await session.scalar(
+            select(FakeHeader).where(FakeHeader.account_id == account_id)
+        )
+        fake_headers = fake_obj.headers if fake_obj and fake_obj.headers else {}
+        cookies = fake_obj.cookies if fake_obj and fake_obj.cookies else {}
+
+    # создаём клиента
+    client = BackpackExchangeClient(
+        api_key=account.api_key,
+        api_secret=account.api_secret,
+        proxy_url=proxy_url,
+        fake_headers=fake_headers,
+        cookies=cookies,
+    )
+    return client

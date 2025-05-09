@@ -1,6 +1,20 @@
 import time
 from functools import wraps
 from prometheus_client import start_http_server, Counter, Histogram
+from prometheus_client import Summary, Counter
+
+# TODO переделать
+REQUEST_LATENCY = Summary(
+    "backpack_request_duration_seconds",
+    "Время выполнения запроса к Backpack API",
+    ["instruction", "method"],
+)
+
+REQUEST_COUNT = Counter(
+    "backpack_request_total",
+    "Количество запросов к Backpack API",
+    ["instruction", "method"],
+)
 
 
 class PrometheusClient:

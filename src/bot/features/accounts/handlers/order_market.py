@@ -1,4 +1,3 @@
-# src/bot/features/accounts/handlers/order_market.py
 import json
 import html
 from decimal import Decimal, InvalidOperation
@@ -20,21 +19,13 @@ from src.bot.features.accounts.states import (
 from src.bot.triggers import Texts
 from src.core.repositories import accounts as accounts_repo
 from src.core.clients.exchanges.backpack.backpack import BackpackExchangeClient
+from loguru import logger
 
 router = Router()
 
 
-def _format_result_html(res: dict) -> str:
-    dumped = json.dumps(res, indent=2, ensure_ascii=False)
-    return f"<pre>{html.escape(dumped)}</pre>"
-
-
-@router.message(
-    F.text == Texts.Accounts.MARKET_ORDER,
-    StateFilter(AccountsStates.account_selected),
-)
-async def order_start(message: Message, state: FSMContext) -> None:
-    kb = ReplyKeyboardMarkup(
+def get_order_type_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Market (рыночный)")],
             [KeyboardButton(text="Limit (лимитный)")],
@@ -42,188 +33,215 @@ async def order_start(message: Message, state: FSMContext) -> None:
         resize_keyboard=True,
         one_time_keyboard=True,
     )
+
+
+async def reset_to_account_selected(state: FSMContext) -> None:
+    data = await state.get_data()
+    account_id = data.get("account_id")
+    await state.clear()
+    if account_id is not None:
+        await state.update_data(account_id=account_id)
+        await state.set_state(AccountsStates.account_selected)
+
+
+@router.message(
+    F.text == Texts.Accounts.MARKET_ORDER,
+    StateFilter(AccountsStates.account_selected),
+)
+async def order_start(message: Message, state: FSMContext) -> None:
     await state.set_state(OrderStates.choose_side)
-    await message.answer("Выберите тип ордера:", reply_markup=kb)
+    await message.answer(
+        "Выберите тип ордера:",
+        reply_markup=get_order_type_keyboard(),
+    )
 
 
-@router.message(StateFilter(OrderStates.choose_side))
-async def order_choose_side(message: Message, state: FSMContext) -> None:
-    text = message.text.strip().lower()
-    if "market" in text:
-        await state.update_data(order_type="Market")
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="Купить")],
-                [KeyboardButton(text="Продать")],
-            ],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        )
-        await state.set_state(OrderStates.symbol)
-        await message.answer(
-            "Market-ордер: выберите сторону или введите пару:", reply_markup=kb
-        )
-    elif "limit" in text:
-        await state.update_data(order_type="Limit")
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="Купить")],
-                [KeyboardButton(text="Продать")],
-            ],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        )
-        await state.set_state(LimitOrderStates.limit_choose_side)
-        await message.answer("Limit-ордер: выберите сторону:", reply_markup=kb)
-    else:
-        await message.answer(
-            "Пожалуйста, выберите Market или Limit.", reply_markup=accounts_keyboard()
-        )
+# --- Market flow ---
+@router.message(F.text == "Market (рыночный)", StateFilter(OrderStates.choose_side))
+async def market_order_symbol(message: Message, state: FSMContext) -> None:
+    await state.update_data(order_type="Market")
+    await state.set_state(OrderStates.symbol)
+    await message.answer(
+        "Market-ордер: введите торговую пару (например SOL_USDC):",
+        reply_markup=accounts_keyboard(),
+    )
 
 
 @router.message(StateFilter(OrderStates.symbol))
-async def market_symbol_or_side(message: Message, state: FSMContext) -> None:
-    txt = message.text.strip()
-    if txt.lower() in ("купить", "продать"):
-        # это сторона
-        side = "Bid" if txt.lower() == "купить" else "Ask"
-        await state.update_data(order_side=side)
-        await state.set_state(OrderStates.quantity)
-        await message.answer("Введите количество:", reply_markup=accounts_keyboard())
-    else:
-        # это пара
-        symbol = txt.upper()
-        await state.update_data(order_symbol=symbol)
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="Купить")],
-                [KeyboardButton(text="Продать")],
-            ],
-            resize_keyboard=True,
-            one_time_keyboard=True,
+async def market_order_side(message: Message, state: FSMContext) -> None:
+    symbol = message.text.strip().upper()
+    await state.update_data(order_symbol=symbol)
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Купить")],
+            [KeyboardButton(text="Продать")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+    await state.set_state(OrderStates.side)
+    await message.answer(
+        f"Пара <b>{symbol}</b> сохранена. Теперь выберите сторону:",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+
+
+@router.message(StateFilter(OrderStates.side))
+async def market_order_quantity(message: Message, state: FSMContext) -> None:
+    text = message.text.strip().lower()
+    if text not in ("купить", "продать"):
+        return await message.answer(
+            "Пожалуйста, нажмите кнопку 'Купить' или 'Продать'.",
+            reply_markup=accounts_keyboard(),
         )
-        await state.set_state(OrderStates.symbol)
-        await message.answer(
-            f"Пара <b>{symbol}</b> принята. Теперь выберите сторону:",
-            parse_mode="HTML",
-            reply_markup=kb,
-        )
+    side = "Bid" if text == "купить" else "Ask"
+    await state.update_data(order_side=side)
+    await state.set_state(OrderStates.quantity)
+    await message.answer(
+        "Введите количество:",
+        reply_markup=accounts_keyboard(),
+    )
 
 
 @router.message(StateFilter(OrderStates.quantity))
-async def market_quantity(message: Message, state: FSMContext) -> None:
-    txt = message.text.strip()
-    try:
-        qty = str(Decimal(txt))
-    except InvalidOperation:
-        await message.answer(
-            "❌ Некорректное число. Повторите ввод:", reply_markup=accounts_keyboard()
-        )
-        return
-
+async def market_order_execute(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
-    acc_id = data["account_id"]
-    symbol = data["order_symbol"]
-    side = data["order_side"]
-
-    acc = await accounts_repo.get_by_id(acc_id)
-    if not acc:
-        await message.answer("❌ Аккаунт не найден.", reply_markup=accounts_keyboard())
-        await state.clear()
-        return
-
-    client = BackpackExchangeClient(api_key=acc.api_key, api_secret=acc.api_secret)
-    result = await client.create_order(
-        symbol=symbol, side=side, quantity=qty, order_type="Market"
-    )
-
-    action = "покупка" if side == "Bid" else "продажа"
-    await message.answer(
-        f"⚡ Market-ордер ({action}) {symbol} выполнен:\n"
-        + _format_result_html(result),
-        parse_mode="HTML",
-        reply_markup=accounts_actions_keyboard(),
-    )
-    await state.clear()
-
-
-@router.message(StateFilter(LimitOrderStates.limit_choose_side))
-async def limit_choose_side(message: Message, state: FSMContext) -> None:
-    txt = message.text.strip().lower()
-    if txt not in ("купить", "продать"):
-        await message.answer(
-            "Пожалуйста, выберите «Купить» или «Продать».",
+    symbol = data.get("order_symbol")
+    side = data.get("order_side")
+    try:
+        qty = str(Decimal(message.text.strip()))
+    except InvalidOperation:
+        return await message.answer(
+            "❌ Некорректное количество, введите число.",
             reply_markup=accounts_keyboard(),
         )
+    acc_id = data.get("account_id")
+    client = await accounts_repo.get_backpack_client_by_account_id(acc_id)
+    if not client:
+        await message.answer(
+            "❌ Аккаунт не найден.",
+            reply_markup=accounts_keyboard(),
+        )
+        await reset_to_account_selected(state)
         return
-    side = "Bid" if txt == "купить" else "Ask"
-    await state.update_data(order_side=side)
+    try:
+        await client.create_market_order(symbol=symbol, side=side, quantity=qty)
+    except Exception as e:
+        logger.error(f"Exception create_market_order: {e}")
+        await message.answer(
+            "❌ Не удалось создать маркет-ордер.",
+            reply_markup=accounts_actions_keyboard(),
+        )
+        await reset_to_account_selected(state)
+        return
+    await message.answer(
+        f"⚡ Market-ордер выполнен: {side} {qty} {symbol}",
+        reply_markup=accounts_actions_keyboard(),
+    )
+    await reset_to_account_selected(state)
+
+
+# --- Limit flow ---
+@router.message(F.text == "Limit (лимитный)", StateFilter(OrderStates.choose_side))
+async def limit_order_symbol(message: Message, state: FSMContext) -> None:
+    await state.update_data(order_type="Limit")
     await state.set_state(LimitOrderStates.limit_symbol)
     await message.answer(
-        "Введите торговую пару (например SOL_USDC):", reply_markup=accounts_keyboard()
+        "Limit-ордер: введите торговую пару (например SOL_USDC):",
+        reply_markup=accounts_keyboard(),
     )
 
 
 @router.message(StateFilter(LimitOrderStates.limit_symbol))
-async def limit_symbol(message: Message, state: FSMContext) -> None:
-    sym = message.text.strip().upper()
-    await state.update_data(order_symbol=sym)
+async def limit_order_side(message: Message, state: FSMContext) -> None:
+    symbol = message.text.strip().upper()
+    await state.update_data(order_symbol=symbol)
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Купить")],
+            [KeyboardButton(text="Продать")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+    await state.set_state(LimitOrderStates.limit_side)
+    await message.answer(
+        f"Пара <b>{symbol}</b> сохранена. Теперь выберите сторону:",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+
+
+@router.message(StateFilter(LimitOrderStates.limit_side))
+async def limit_order_quantity(message: Message, state: FSMContext) -> None:
+    text = message.text.strip().lower()
+    if text not in ("купить", "продать"):
+        return await message.answer(
+            "Пожалуйста, нажмите кнопку 'Купить' или 'Продать'.",
+            reply_markup=accounts_keyboard(),
+        )
+    side = "Bid" if text == "купить" else "Ask"
+    await state.update_data(order_side=side)
     await state.set_state(LimitOrderStates.limit_quantity)
     await message.answer(
-        f"Сколько {sym}? Введите количество:", reply_markup=accounts_keyboard()
+        "Введите количество:",
+        reply_markup=accounts_keyboard(),
     )
 
 
 @router.message(StateFilter(LimitOrderStates.limit_quantity))
-async def limit_quantity(message: Message, state: FSMContext) -> None:
-    txt = message.text.strip()
+async def limit_order_price(message: Message, state: FSMContext) -> None:
     try:
-        qty = str(Decimal(txt))
+        qty = str(Decimal(message.text.strip()))
     except InvalidOperation:
-        await message.answer(
-            "❌ Некорректное число. Повторите ввод:", reply_markup=accounts_keyboard()
+        return await message.answer(
+            "❌ Некорректное количество, повторите ввод.",
+            reply_markup=accounts_keyboard(),
         )
-        return
     await state.update_data(order_quantity=qty)
     await state.set_state(LimitOrderStates.limit_price)
     await message.answer(
-        "Укажите цену (например 1.2345):", reply_markup=accounts_keyboard()
+        "Укажите цену (например 1.2345):",
+        reply_markup=accounts_keyboard(),
     )
 
 
 @router.message(StateFilter(LimitOrderStates.limit_price))
-async def limit_price(message: Message, state: FSMContext) -> None:
-    txt = message.text.strip()
-    try:
-        price = str(Decimal(txt))
-    except InvalidOperation:
-        await message.answer(
-            "❌ Некорректная цена. Повторите ввод:", reply_markup=accounts_keyboard()
-        )
-        return
-
+async def limit_order_execute(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
-    acc_id = data["account_id"]
-    symbol = data["order_symbol"]
-    side = data["order_side"]
-    qty = data["order_quantity"]
-
-    acc = await accounts_repo.get_by_id(acc_id)
-    if not acc:
-        await message.answer("❌ Аккаунт не найден.", reply_markup=accounts_keyboard())
-        await state.clear()
+    symbol = data.get("order_symbol")
+    side = data.get("order_side")
+    qty = data.get("order_quantity")
+    try:
+        price = str(Decimal(message.text.strip()))
+    except InvalidOperation:
+        return await message.answer(
+            "❌ Некорректная цена, повторите ввод.",
+            reply_markup=accounts_keyboard(),
+        )
+    acc_id = data.get("account_id")
+    client = await accounts_repo.get_backpack_client_by_account_id(acc_id)
+    if not client:
+        await message.answer(
+            "❌ Аккаунт не найден.",
+            reply_markup=accounts_keyboard(),
+        )
+        await reset_to_account_selected(state)
         return
-
-    client = BackpackExchangeClient(api_key=acc.api_key, api_secret=acc.api_secret)
-    result = await client.create_order(
-        symbol=symbol, side=side, quantity=qty, order_type="Limit", price=price
-    )
-
-    action = "покупка" if side == "Bid" else "продажа"
+    try:
+        await client.create_limit_order(
+            symbol=symbol, side=side, quantity=qty, price=price
+        )
+    except Exception:
+        await message.answer(
+            "❌ Не удалось создать лимит-ордер.",
+            reply_markup=accounts_actions_keyboard(),
+        )
+        await reset_to_account_selected(state)
+        return
     await message.answer(
-        f"⚡ Limit-ордер ({action}) {symbol} по цене {price} выполнен:\n"
-        + _format_result_html(result),
-        parse_mode="HTML",
+        f"⚡ Limit-ордер выполнен: {side} {qty} {symbol} @ {price}",
         reply_markup=accounts_actions_keyboard(),
     )
-    await state.clear()
+    await reset_to_account_selected(state)

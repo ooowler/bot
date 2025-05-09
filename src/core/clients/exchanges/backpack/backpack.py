@@ -5,14 +5,17 @@ import random
 import time
 from typing import Any, Optional
 from decimal import Decimal, ROUND_DOWN
-
+from datetime import datetime, timezone
 from cryptography.hazmat.primitives.asymmetric import ed25519
-
+import time as _time
+from aiohttp import ClientSession, ClientTimeout
+from aiohttp_socks import ProxyConnector
 from aiohttp_socks import ProxyConnector
 from aiohttp import ClientTimeout, ClientSession
 from aiohttp.client_exceptions import ServerDisconnectedError, ClientConnectorError
 from loguru import logger
 from sqlalchemy import select, update
+from src.core.clients.metrics import REQUEST_COUNT, REQUEST_LATENCY
 from src.core.clients.exchanges.backpack.schemas import (
     AccountInfoResponse,
     BalancesResponse,
@@ -23,6 +26,8 @@ from src.core.clients.exchanges.backpack.schemas import (
     MarketSaleResult,
     OpenOrdersResponse,
     OrderResponseBase,
+    Ticker,
+    TickersResponse,
     TotalTokenQuantitiesResponse,
     WithdrawalResponse,
 )
@@ -43,22 +48,9 @@ from tenacity import (
     retry_if_exception_type,
 )
 from sqlalchemy import select, update
-from prometheus_client import Summary, Counter
 
 from src.core.models import Account, Proxy
 from decimal import Decimal, ROUND_DOWN
-
-REQUEST_LATENCY = Summary(
-    "backpack_request_duration_seconds",
-    "Время выполнения запроса к Backpack API",
-    ["instruction", "method"],
-)
-
-REQUEST_COUNT = Counter(
-    "backpack_request_total",
-    "Количество запросов к Backpack API",
-    ["instruction", "method"],
-)
 
 
 class BackpackExchangeClient:
@@ -98,8 +90,9 @@ class BackpackExchangeClient:
         sign_str = f"instruction={instruction}"
         if param_str:
             sign_str += f"&{param_str}"
-        sign_str += f"&timestamp={timestamp}&window=5000"
+        sign_str += f"&timestamp={timestamp}&window=60000"
 
+        logger.info(f"sign_str: {sign_str}")
         return base64.b64encode(self.private_key_obj.sign(sign_str.encode())).decode()
 
     async def _request_with_retry(
@@ -153,20 +146,19 @@ class BackpackExchangeClient:
         data = json.dumps(params) if method.upper() in ("POST", "PATCH") else None
 
         async def _inner():
+            _time = int(datetime.now(timezone.utc).timestamp() * 1000)
             headers = {
                 "X-API-Key": self.api_key,
-                "X-Signature": self._generate_signature(
-                    instruction, int(time.time() * 1000), params
-                ),
-                "X-Timestamp": str(int(time.time() * 1000)),
-                "X-Window": "5000",
+                "X-Signature": self._generate_signature(instruction, _time, params),
+                "X-Timestamp": str(_time),
+                "X-Window": "60000",
                 "Content-Type": "application/json; charset=utf-8",
                 **self.fake_headers,
             }
             connector = (
                 ProxyConnector.from_url(self.proxy_url) if self.proxy_url else None
             )
-            timeout = ClientTimeout(total=30)
+            timeout = ClientTimeout(total=20)
             async with ClientSession(connector=connector, timeout=timeout) as session:
                 async with session.request(
                     method=method.upper(),
@@ -188,8 +180,8 @@ class BackpackExchangeClient:
         except RetryError as e:
             logger.error("Max retries reached for {} {}: {}", method, endpoint, e)
             return {"error": "proxy_failure", "message": str(e)}
-        except json.JSONDecodeError:
-            logger.error("Invalid JSON from {}: {}", url, await resp.text())
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON from {}: {}", url, e)
             return {"error": "invalid_json"}
         except Exception as e:
             logger.exception("Unhandled error: %s", e)
@@ -254,7 +246,6 @@ class BackpackExchangeClient:
             self.get_balance(),
             self.get_borrow_lend_positions(),
         )
-
         totals = {
             symbol: tb.available + tb.locked + tb.staked
             for symbol, tb in balances_resp.balances.items()
@@ -337,7 +328,11 @@ class BackpackExchangeClient:
             "side": side,
             "orderType": "Market",
             "quantity": quantity,
-            "reduceOnly": False,
+            "autoLend": True,
+            "autoLendRedeem": True,
+            "autoBorrow": True,
+            "autoBorrowRepay": True,
+            # "reduceOnly": False,
         }
         data = await self._send_request(
             method="POST",
@@ -539,8 +534,35 @@ class BackpackExchangeClient:
             params={"symbol": symbol},
         )
 
-    async def get_all_tickers(self) -> list[dict]:
-        return await self.send_public_request(
+    async def get_tickers(self) -> TickersResponse:
+        data = await self.send_public_request(
             method="GET",
             endpoint="api/v1/tickers",
         )
+        return TickersResponse(tickers=[Ticker(**item) for item in data])
+
+    async def get_ticker(self, symbol) -> Ticker:
+        data = await self.send_public_request(
+            method="GET",
+            endpoint=f"api/v1/ticker?symbol={symbol.upper()}",
+        )
+        return Ticker(**data)
+
+    async def check_proxy(self) -> dict[str, Any]:
+        start = _time.perf_counter()
+        url = "https://ipinfo.io/json"
+        connector = ProxyConnector.from_url(self.proxy_url) if self.proxy_url else None
+
+        async with ClientSession(
+            connector=connector,
+            timeout=ClientTimeout(total=5),
+        ) as session:
+            async with session.get(
+                url, headers=self.fake_headers, cookies=self.cookies
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+
+        elapsed = _time.perf_counter() - start
+        data["response_time"] = elapsed
+        return data

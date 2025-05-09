@@ -20,6 +20,8 @@ class Callbacks:
         HOME = "proxy_home"
         INFO = "proxy_info"
         ADD = "proxy_add"
+        CONFIRM = "proxy_confirm"
+        CANCEL = "proxy_cancel"
 
     class Pools(StrEnum):
         HOME = "proxy_home"
@@ -48,16 +50,20 @@ class Texts:
         ORDER = "Выполнить ордер"
         MARKET_ORDER = "Маркет-ордер"
         TRANSFER = "Перевести средства"
+        PROXY_CHECK = "Проверить прокси"
+        PROXY_CHANGE = "Сменить прокси"
 
     class Pools(StrEnum):
         HOME = "Пулы"
 
     class Proxy(StrEnum):
         HOME = "Прокси"
+        ADD = "Добавить Прокси"
         STATS = "Статистика по прокси"
         DELETE = "Удалить прокси"
 
     class Friends(StrEnum):
+        HOME = "Друзья"
         ADD = "Добавить друга"
 
 

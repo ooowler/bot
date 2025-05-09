@@ -11,7 +11,6 @@ from src.core.repositories import proxy as proxy_repo
 router = Router()
 
 
-# ───────────────────── ШАГ 0: спросить страну ─────────────────────
 @router.message(F.text == Texts.Proxy.DELETE)
 async def proxy_delete_start(message: Message, state: FSMContext) -> None:
     await state.set_state(ProxyStates.deleting_country)
@@ -21,10 +20,9 @@ async def proxy_delete_start(message: Message, state: FSMContext) -> None:
     )
 
 
-# ───────────────────── ШАГ 1: посчитать доступные ─────────────────
 @router.message(StateFilter(ProxyStates.deleting_country))
 async def proxy_delete_country(message: Message, state: FSMContext) -> None:
-    country: str = message.text.strip()
+    country: str = message.text.strip().upper()
 
     total: int = await proxy_repo.count_available_by_country(country)
     if total == 0:
@@ -43,7 +41,6 @@ async def proxy_delete_country(message: Message, state: FSMContext) -> None:
     )
 
 
-# ───────────────────── ШАГ 2: удалить выбранное число ─────────────
 @router.message(StateFilter(ProxyStates.deleting_amount))
 async def proxy_delete_amount(message: Message, state: FSMContext) -> None:
     data = await state.get_data()

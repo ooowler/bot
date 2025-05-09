@@ -70,7 +70,7 @@ async def add_account_api_secret(message: Message, state: FSMContext) -> None:
 
 @router.message(StateFilter(AccountsStates.adding_country))
 async def add_account_country(message: Message, state: FSMContext) -> None:
-    await state.update_data(country=message.text.strip())
+    await state.update_data(country=message.text.strip().upper())
     await state.set_state(AccountsStates.adding_deposit)
     await message.answer(
         "Введите Solana‑адрес для депозита:", reply_markup=accounts_keyboard()

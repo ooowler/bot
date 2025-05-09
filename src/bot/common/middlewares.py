@@ -3,14 +3,24 @@ from aiogram.fsm.context import FSMContext
 import time
 from src.core.clients.metrics import metrics
 from src.bot.features.exchange.states import ExchangeStates
+from aiogram.types import Message, CallbackQuery
 
 
-class ExchangeCheckMiddleware(BaseMiddleware):
+class AccessMiddleware(BaseMiddleware):
+    def __init__(self, allowed_user_ids: list[int]):
+        self.allowed_user_id = allowed_user_ids
+        super().__init__()
+
     async def __call__(self, handler, event, data):
-        state: FSMContext = data["state"]
-        if await state.get_state() != ExchangeStates.selected:
-            await event.answer("Сначала выберите биржу командой /select_exchange")
+        user = getattr(event, "from_user", None)
+        if user is None and hasattr(event, "message"):
+            user = event.message.from_user
+        if user is None and hasattr(event, "callback_query"):
+            user = event.callback_query.from_user
+
+        if user is None or user.id not in self.allowed_user_id:
             return
+
         return await handler(event, data)
 
 

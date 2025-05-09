@@ -75,7 +75,7 @@ async def import_csv(message: Message, state: FSMContext) -> None:
                 try:
                     api_key = row["API_KEY"].strip()
                     api_secret = row["API_SECRET"].strip()
-                    country = row["COUNTRY"].strip()
+                    country = row["COUNTRY"].strip().upper()
                     deposit_address = row["SOL_DEPOSIT_ADDRESS"].strip()
                     parent_ident = row.get("PARENT", "").strip() or None
 
@@ -108,6 +108,8 @@ async def import_csv(message: Message, state: FSMContext) -> None:
                     successes.append(name)
                 except (NoFreeProxy, ParentAccountNotFound, KeyError, ValueError) as e:
                     logger.warning(f"row {idx} failed: {e}")
+                    failures.append(name or f"row#{idx}")
+                except Exception as e:
                     failures.append(name or f"row#{idx}")
     finally:
         os.remove(path)
