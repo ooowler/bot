@@ -29,6 +29,11 @@ class PrometheusClient:
             "Latency of function execution",
             ["function"],
         )
+        self.call_status = Counter(
+            "calls_status_total",
+            "Number of calls partitioned by status",
+            ["function", "status"],
+        )
 
     def start(self, _port: int):
         start_http_server(self._port)
@@ -41,13 +46,19 @@ class PrometheusClient:
         def decorator(func):
             @wraps(func)
             async def wrapper(*args, **kwargs):
-                start_time = time.perf_counter()
+                fname = f"{prefix}{func.__name__}"
+                start_ts = time.perf_counter()
                 try:
-                    return await func(*args, **kwargs)
+                    result = await func(*args, **kwargs)
+                    self.call_status.labels(function=fname, status="success").inc()
+                    return result
+                except Exception:
+                    self.call_status.labels(function=fname, status="failure").inc()
+                    raise
                 finally:
-                    elapsed = time.perf_counter() - start_time
-                    name = f"{prefix}{func.__name__}"
-                    self.record(name, elapsed)
+                    elapsed = time.perf_counter() - start_ts
+                    self.call_count.labels(function=fname).inc()
+                    self.call_latency.labels(function=fname).observe(elapsed)
 
             return wrapper
 

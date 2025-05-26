@@ -15,7 +15,7 @@ from aiohttp import ClientTimeout, ClientSession
 from aiohttp.client_exceptions import ServerDisconnectedError, ClientConnectorError
 from loguru import logger
 from sqlalchemy import select, update
-from src.core.clients.metrics import REQUEST_COUNT, REQUEST_LATENCY
+from src.core.clients.metrics import REQUEST_COUNT, REQUEST_LATENCY, metrics
 from src.core.clients.exchanges.backpack.schemas import (
     AccountInfoResponse,
     BalancesResponse,
@@ -225,6 +225,7 @@ class BackpackExchangeClient:
             )
             return {"error": "proxy_failure", "message": str(e)}
 
+    @metrics.track("backpack")
     async def get_balance(self) -> BalancesResponse:
         response = await self._send_request(
             method="GET",
@@ -233,6 +234,7 @@ class BackpackExchangeClient:
         )
         return BalancesResponse(balances=response)
 
+    @metrics.track("backpack")
     async def get_borrow_lend_positions(self) -> BorrowLendPositionsResponse:
         response = await self._send_request(
             method="GET",
@@ -241,6 +243,7 @@ class BackpackExchangeClient:
         )
         return BorrowLendPositionsResponse(positions=response)
 
+    @metrics.track("backpack")
     async def get_total_token_quantities(self) -> TotalTokenQuantitiesResponse:
         balances_resp, positions_resp = await asyncio.gather(
             self.get_balance(),
@@ -258,6 +261,7 @@ class BackpackExchangeClient:
 
         return TotalTokenQuantitiesResponse(totals=totals)
 
+    @metrics.track("backpack")
     async def request_withdrawal(
         self,
         address: str,
@@ -292,6 +296,7 @@ class BackpackExchangeClient:
 
         return WithdrawalResponse(**data)
 
+    @metrics.track("backpack")
     async def create_limit_order(
         self,
         symbol: str,
@@ -317,6 +322,7 @@ class BackpackExchangeClient:
         )
         return LimitOrderResponse(**data)
 
+    @metrics.track("backpack")
     async def create_market_order(
         self,
         symbol: str,
@@ -342,6 +348,7 @@ class BackpackExchangeClient:
         )
         return MarketOrderResponse(**data)
 
+    @metrics.track("backpack")
     async def convert_all_to_usdc(
         self,
     ) -> ConvertAllToUsdcResponse:
@@ -390,6 +397,7 @@ class BackpackExchangeClient:
                 )
         return ConvertAllToUsdcResponse(results=sale_results)
 
+    @metrics.track("backpack")
     async def get_open_orders(
         self,
         market_type: str,
