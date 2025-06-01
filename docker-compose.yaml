@@ -33,6 +33,18 @@ services:
     ports:
       - "8001:8001"
     restart: on-failure
+  
+  tg_gifts_worker:
+    build:
+      context: .
+    env_file:
+      - .env
+    command: python -u -m src.workers.tg_gifts.main
+    volumes:
+      - metrics_data:/app/metrics
+    ports:
+      - "8002:8002"
+    restart: on-failure
     
 
 volumes:

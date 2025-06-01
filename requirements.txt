@@ -14,3 +14,4 @@ faker
 aiohttp-socks
 tenacity
 aioredis
+cloudscraper
