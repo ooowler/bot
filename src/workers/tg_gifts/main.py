@@ -296,7 +296,7 @@ async def main():
         except Exception as e:
             logger.error(f"ERROR: {e}")
         finally:
-            await asyncio.sleep(1)
+            await asyncio.sleep(60)
 
 
 if __name__ == "__main__":
