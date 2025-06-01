@@ -10,6 +10,10 @@ services:
     ports:
       - "9090:9090"
     restart: always
+    depends_on:
+      - telegram_bot
+      - tg_gifts_worker
+
 
   telegram_bot:
     build:
