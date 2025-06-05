@@ -265,7 +265,7 @@ async def main():
                     if (
                         all(x <= 0.01 for x in (model_top, symbol_top, backdrop_top))
                         and item["price"] < floor * 1.1
-                        and body[0]["gift_id"] not in GIFTS_FOUND
+                        and gift_id not in GIFTS_FOUND
                     ):
                         message = (
                             f"Редкий предмет"
@@ -282,18 +282,18 @@ async def main():
                     elif (
                         i == 2
                         and floor * 1.15 < item["price"]
-                        and gift_id not in GIFTS_FOUND
+                        and first["gift_id"] not in GIFTS_FOUND
                     ):
                         message = (
                             f"Дешевый предмет (дешевле на {round(100 * (item['price'] / floor) - 100, 2)}%)\n"
                             f"Name: {first['name']} (gift_num: {first['gift_num']})\n"
                             f"price: {round(first['price'], 3)}\n"
-                            f"Model {item['model']}%\n"
-                            f"Symbol {item['symbol']}%\n"
-                            f"Backdrop {item['backdrop']}%\n"
+                            f"Model {first['model']}\n"
+                            f"Symbol {first['symbol']}\n"
+                            f"Backdrop {first['backdrop']}\n"
                             f"Buy: @Tonnel_Network_bot"
                         )
-                        GIFTS_FOUND.add(gift_id)
+                        GIFTS_FOUND.add(first["gift_id"])
                         await send_telegram_message(message)
         except Exception as e:
             logger.error(f"ERROR: {e}")
