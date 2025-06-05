@@ -281,13 +281,13 @@ async def main():
 
                     elif (
                         i == 2
-                        and floor * 1.10 < item["price"]
+                        and floor * 1.15 < item["price"]
                         and gift_id not in GIFTS_FOUND
                     ):
                         message = (
                             f"Дешевый предмет (дешевле на {round(100 * (item['price'] / floor) - 100, 2)}%)\n"
                             f"Name: {first['name']} (gift_num: {first['gift_num']})\n"
-                            f"price: {first['price']}\n"
+                            f"price: {round(first['price'], 3)}\n"
                             f"Model {item['model']}%\n"
                             f"Symbol {item['symbol']}%\n"
                             f"Backdrop {item['backdrop']}%\n"
