@@ -85,7 +85,6 @@ async def gift_worker(gift,cookie_header):
     async with httpx.AsyncClient(headers=headers) as client:
         while True:
             try:
-                logger.info(f"run gift: {gift}")
                 body = await fetch_page_gifts_async(client,gift)
                 if body:
                     for rank,idx in zip(["1","3","5","10"],[0,2,4,9]):
@@ -114,8 +113,7 @@ async def gift_worker(gift,cookie_header):
                                 GIFTS_FOUND.add(first["gift_id"])
                             await send_telegram_message(msg)
             except Exception as e:
-                pass
-                # logger.error(e)
+                logger.error(e)
             finally:
                 await asyncio.sleep(random.uniform(0.2, 1.5))
 
