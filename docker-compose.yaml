@@ -9,7 +9,6 @@ services:
       - metrics_data:/prometheus
     ports:
       - "9090:9090"
-    restart: always
     depends_on:
       - telegram_bot
       - tg_gifts_worker
@@ -49,6 +48,17 @@ services:
     ports:
       - "8002:8002"
     restart: on-failure
+
+  telegram_portal_worker:
+    build:
+      context: .
+    env_file:
+      - .env
+    command: python -u -m src.workers.telegram.portal
+    volumes:
+      - metrics_data:/app/metrics
+    ports:
+      - "8003:8003"
     
 
 volumes:

@@ -293,6 +293,7 @@ class BackpackExchangeClient:
             instruction="withdraw",
             params=params,
         )
+        logger.info(f"data: {data}")
 
         return WithdrawalResponse(**data)
 
