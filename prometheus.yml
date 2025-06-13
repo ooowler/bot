@@ -13,4 +13,4 @@ scrape_configs:
       - targets: ['tg_gifts_worker:8002']
   - job_name: telegram_portal_worker
     static_configs:
-      - targets: ['tg_gifts_worker:8003']
+      - targets: ['telegram_portal_worker:8003']
