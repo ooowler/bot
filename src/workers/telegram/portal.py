@@ -58,7 +58,7 @@ if not BOT_TOKEN or CHAT_ID is None:
 NFT_PRICE_GAUGE = Gauge(
     "portals_nft_price",
     "Price of NFT at specific rank in a collection",
-    ["collection", "nft_id", "rank"],
+    ["collection", "rank"],
 )
 PRICE_GAP_GAUGE = Gauge(
     "portals_price_gap_percent",
@@ -213,20 +213,23 @@ async def process_collection(session: aiohttp.ClientSession, coll: Collection):
         if len(results) >= rank:
             nft = results[rank - 1]
             price = float(nft.price)
-            NFT_PRICE_GAUGE.labels(
-                collection=coll.short_name, nft_id=nft.id, rank=str(rank)
-            ).set(price)
+            NFT_PRICE_GAUGE.labels(collection=coll.short_name, rank=str(rank)).set(
+                price
+            )
 
     PRICE_GAP_GAUGE.labels(collection=coll.short_name).set(diff_pct)
 
     if diff_pct > THRESHOLD_PERCENT and results[0].id not in NOTIFIED_NFTS:
+        nft = results[0]
+        nft_link = f"https://t.me/portals/market?startapp=gift_{nft.id}"
         msg = (
             f"<b>{coll.name}</b> — price gap {diff_pct:.2f}%\n"
             f"1️⃣ {p1} TON\n2️⃣ {p2} TON\n"
-            f"@portals"
+            f'<a href="{nft_link}">Gift Link</a>'
         )
-        await send_telegram_message(session, msg, results[0].photo_url)
-        NOTIFIED_NFTS.add(results[0].id)
+        await send_telegram_message(session, msg, nft.photo_url)
+        exit(0)
+        NOTIFIED_NFTS.add(nft.id)
 
 
 async def run_cycle(session: aiohttp.ClientSession):
