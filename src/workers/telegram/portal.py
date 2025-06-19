@@ -3,12 +3,19 @@ import random
 import asyncio
 import os
 from typing import Dict, List, Set
-
+from aiohttp import ClientResponseError
 import aiohttp
 from loguru import logger
 from pydantic import BaseModel, Field
 from prometheus_client import start_http_server, Gauge
 from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_random,
+    retry_if_exception,
+    before_sleep_log,
+)
 
 # -----------------------------------------------------
 #  Configuration
@@ -38,8 +45,8 @@ CHAT_ID_ENV = os.getenv("TELEGRAM_GIFTS_GROUP_ID", "0")
 CHAT_ID: int | None = int(CHAT_ID_ENV) if CHAT_ID_ENV != "0" else None
 
 THRESHOLD_PERCENT = 10.0
-INTERVAL_SEC = 60
-MAX_CONCURRENCY = 3
+INTERVAL_SEC = 0
+MAX_CONCURRENCY = 10
 
 if not HEADERS["Authorization"]:
     raise EnvironmentError("AUTH_PORTAL environment variable is not set")
@@ -92,7 +99,6 @@ class NFT(BaseModel):
     tg_id: str
     collection_id: str
     external_collection_number: int
-    owner_id: int
     name: str
     photo_url: str
     price: str
@@ -101,7 +107,7 @@ class NFT(BaseModel):
     status: str
     animation_url: str
     emoji_id: str
-    has_animation: bool
+    # has_animation: bool
     floor_price: str
     unlocks_at: str | None
 
@@ -114,7 +120,17 @@ class NFTSearchResponse(BaseModel):
 #  HTTP helpers
 # -----------------------------------------------------
 
+retry_on_429 = retry(
+    reraise=True,
+    stop=stop_after_attempt(5),
+    wait=wait_random(min=0, max=5),
+    retry=retry_if_exception(
+        lambda exc: isinstance(exc, ClientResponseError) and exc.status == 429
+    ),
+)
 
+
+@retry_on_429
 async def fetch_collections(
     session: aiohttp.ClientSession,
     *,
@@ -127,6 +143,7 @@ async def fetch_collections(
         return CollectionsResponse(**await resp.json())
 
 
+@retry_on_429
 async def fetch_nfts_for_collection(
     session: aiohttp.ClientSession,
     collection_id: str,
@@ -255,7 +272,7 @@ async def scheduler():
 
 
 if __name__ == "__main__":
-    start_http_server(8000)
+    start_http_server(8003)
     try:
         asyncio.run(scheduler())
     except KeyboardInterrupt:
