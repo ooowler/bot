@@ -230,11 +230,11 @@ async def process_collection(session: aiohttp.ClientSession, coll: Collection):
         if len(results) >= rank:
             nft = results[rank - 1]
             price = float(nft.price)
-            NFT_PRICE_GAUGE.labels(collection=coll.short_name, rank=str(rank)).set(
+            NFT_PRICE_GAUGE.labels(collection=coll.name, rank=str(rank)).set(
                 price
             )
 
-    PRICE_GAP_GAUGE.labels(collection=coll.short_name).set(diff_pct)
+    PRICE_GAP_GAUGE.labels(collection=coll.name).set(diff_pct)
 
     if diff_pct > THRESHOLD_PERCENT and results[0].id not in NOTIFIED_NFTS:
         nft = results[0]
